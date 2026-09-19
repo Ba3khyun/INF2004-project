@@ -1,0 +1,22 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "pico-w",
+      "displayName": "Pico W",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "PICO_SDK_PATH": "C:/Users/Jason Lai/.pico-sdk/sdk/2.3.0",
+        "PICO_TOOLCHAIN_PATH": "C:/Users/Jason Lai/.pico-sdk/toolchain/15_2_Rel1"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "pico-w",
+      "configurePreset": "pico-w"
+    }
+  ]
+}
