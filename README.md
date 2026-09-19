@@ -12,9 +12,8 @@ This is a minimal Raspberry Pi Pico W project based on the core files from `pico
 On Windows, install CMake, Ninja, and the Arm GNU toolchain, then ensure all three
 commands are available in the VS Code terminal's `PATH`.
 
-The included CMake preset uses the SDK installed at:
-
-`C:\Users\Jason Lai\.pico-sdk\sdk\2.3.0`
+The included CMake preset uses a local Pico SDK installation. Set `PICO_SDK_PATH`
+to the SDK directory if CMake cannot find it automatically.
 
 To use another SDK location, set `PICO_SDK_PATH` or change `CMakePresets.json`.
 
