@@ -1,5 +1,12 @@
 {
-    "git.repositoryScanIgnoredFolders": [
-        "**/build/**"
-    ]
+  "cmake.useCMakePresets": "always",
+  "cmake.configureOnOpen": true,
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+  "files.associations": {
+    "*.ld": "linker-script"
+  },
+  "search.exclude": {
+    "**/build*": true,
+    "**/build_make": true
+  }
 }

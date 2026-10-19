@@ -1,15 +1,61 @@
 {
-  "version": 3,
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
   "configurePresets": [
     {
       "name": "pico-w",
-      "displayName": "Pico W",
+      "displayName": "Pico W (default: SMP, USB console, WiFi, no tests)",
+      "description": "Same firmware as 'make' in build_make/.",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build",
+      "toolchainFile": "${sourceDir}/cmake/arm-none-eabi.cmake",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_MAKE_PROGRAM": "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/ninja/ninja.exe",
         "PICO_SDK_PATH": "C:/Users/Jason Lai/.pico-sdk/sdk/2.3.0",
-        "PICO_TOOLCHAIN_PATH": "C:/Users/Jason Lai/.pico-sdk/toolchain/15_2_Rel1"
+        "PICO_TOOLCHAIN_PATH": "C:/Users/Jason Lai/.pico-sdk/toolchain/15_2_Rel1",
+        "SMP": "1",
+        "CONSOLE": "usb_cdc",
+        "WIFI": "cyw43",
+        "NET": "none",
+        "MQTT": "0",
+        "TEST": "0",
+        "CRASH_REPORT": "0"
+      }
+    },
+    {
+      "name": "pico-w-test",
+      "displayName": "Pico W with subsystem self-tests",
+      "description": "Same as 'make TEST=1' in build_make/.",
+      "inherits": "pico-w",
+      "binaryDir": "${sourceDir}/build-test",
+      "cacheVariables": {
+        "TEST": "1"
+      }
+    },
+    {
+      "name": "pico-w-single-core",
+      "displayName": "Pico W single core",
+      "description": "Same as 'make SMP=0' in build_make/.",
+      "inherits": "pico-w",
+      "binaryDir": "${sourceDir}/build-smp0",
+      "cacheVariables": {
+        "SMP": "0"
+      }
+    },
+    {
+      "name": "pico-w-uart",
+      "displayName": "Pico W, UART console, radio off",
+      "description": "Same as 'make CONSOLE=uart WIFI=none'. Needs no Pico SDK.",
+      "inherits": "pico-w",
+      "binaryDir": "${sourceDir}/build-uart",
+      "cacheVariables": {
+        "CONSOLE": "uart",
+        "WIFI": "none",
+        "PICO_SDK_PATH": ""
       }
     }
   ],
@@ -17,6 +63,18 @@
     {
       "name": "pico-w",
       "configurePreset": "pico-w"
+    },
+    {
+      "name": "pico-w-test",
+      "configurePreset": "pico-w-test"
+    },
+    {
+      "name": "pico-w-single-core",
+      "configurePreset": "pico-w-single-core"
+    },
+    {
+      "name": "pico-w-uart",
+      "configurePreset": "pico-w-uart"
     }
   ]
 }
