@@ -1,12 +1,22 @@
 {
   "cmake.useCMakePresets": "always",
   "cmake.configureOnOpen": true,
-  "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
   "files.associations": {
     "*.ld": "linker-script"
   },
   "search.exclude": {
     "**/build*": true,
     "**/build_make": true
-  }
+  },
+  
+  // ADD THIS BLOCK BELOW TO RESOLVE TARGET_DIR LOCALLY
+  "C_Cpp.default.compilerPath": "C:/mingw64/bin/g++.exe",
+  "C_Cpp.default.intelliSenseMode": "windows-gcc-x64",
+  "C_Cpp.default.includePath": [
+    "${workspaceFolder}/**"
+  ],
+  "C_Cpp.default.defines": [
+    "TARGET_DIR=pico_rp2040"
+  ]
 }

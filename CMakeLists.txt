@@ -29,7 +29,8 @@
 # initialised:  git submodule update --init lib/tinyusb lib/cyw43-driver
 #
 # PICO_TOOLCHAIN_PATH is the root of the Arm GNU toolchain (the folder that
-# contains bin/).  If it is not set, arm-none-eabi-gcc is taken from PATH.
+# contains bin/).  If it is not set, the toolchain file checks common Pico SDK
+# install locations before falling back to arm-none-eabi-gcc on PATH.
 ################################################################################
 
 cmake_minimum_required(VERSION 3.20)

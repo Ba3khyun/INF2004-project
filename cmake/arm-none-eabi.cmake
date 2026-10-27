@@ -2,12 +2,13 @@
 # Arm GNU Toolchain (arm-none-eabi) for the RP2040
 #
 # Set PICO_TOOLCHAIN_PATH to the toolchain root (the folder that contains
-# "bin"), either as a CMake cache variable or as an environment variable:
+# "bin"), either as a CMake cache variable or as an environment variable.
+# Otherwise, common Pico SDK toolchain install locations are checked first:
 #
 #   cmake -DPICO_TOOLCHAIN_PATH=/path/to/arm-gnu-toolchain ...
 #   export PICO_TOOLCHAIN_PATH=/path/to/arm-gnu-toolchain
 #
-# If it is not set, arm-none-eabi-gcc is looked up on PATH.
+# If no install is found, arm-none-eabi-gcc is looked up on PATH.
 ################################################################################
 
 set(CMAKE_SYSTEM_NAME Generic)
@@ -17,6 +18,27 @@ set(CMAKE_SYSTEM_PROCESSOR arm)
 # C runtime startup files, which always fails.  Compile a static library
 # instead; the real firmware link below supplies the linker script.
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+
+if(NOT PICO_TOOLCHAIN_PATH AND NOT DEFINED ENV{PICO_TOOLCHAIN_PATH})
+    set(_pico_toolchain_candidates "")
+    foreach(_root "$ENV{USERPROFILE}/.pico-sdk/toolchain"
+                  "$ENV{HOME}/.pico-sdk/toolchain")
+        file(GLOB _toolchains LIST_DIRECTORIES true "${_root}/*")
+        foreach(_toolchain IN LISTS _toolchains)
+            if(IS_DIRECTORY "${_toolchain}"
+               AND (EXISTS "${_toolchain}/bin/arm-none-eabi-gcc"
+                    OR EXISTS "${_toolchain}/bin/arm-none-eabi-gcc.exe"))
+                list(APPEND _pico_toolchain_candidates "${_toolchain}")
+            endif()
+        endforeach()
+    endforeach()
+    if(_pico_toolchain_candidates)
+        list(SORT _pico_toolchain_candidates COMPARE NATURAL ORDER DESCENDING)
+        list(GET _pico_toolchain_candidates 0 _pico_toolchain)
+        set(PICO_TOOLCHAIN_PATH "${_pico_toolchain}" CACHE PATH
+            "Root of the Arm GNU toolchain (the folder containing bin/)")
+    endif()
+endif()
 
 if(NOT DEFINED PICO_TOOLCHAIN_PATH AND DEFINED ENV{PICO_TOOLCHAIN_PATH})
     set(PICO_TOOLCHAIN_PATH "$ENV{PICO_TOOLCHAIN_PATH}" CACHE PATH

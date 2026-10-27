@@ -88,7 +88,10 @@ EXPORT ID app_start_task(FP entry, PRI pri, UW prc, const char *name)
 
 	/* tk_sta_tsk: DORMANT -> READY.  The int is passed as stacd. */
 	er = tk_sta_tsk(tid, 0);
-	CHECK(er, name);
+	if (er < E_OK) {
+		tm_printf((UB*)"ERROR tk_sta_tsk for %s: %d\n", name, er);
+		return (ID)er;
+	}
 	return tid;
 }
 

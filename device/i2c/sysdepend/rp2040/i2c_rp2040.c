@@ -15,6 +15,8 @@
 #ifdef CPU_RP2040
 
 #include <tk/tkernel.h>
+#include <tm/tmonitor.h> //ADDED
+
 #if TK_SUPPORT_SMP
 #include <tk/smp.h>
 #endif
@@ -66,6 +68,7 @@ typedef struct {
 	UW	rdat_num;	// Number of receive data
 	UB	*sbuf;		// Send buffer
 	UB	*rbuf;		// Receive buffer
+	UW abort_source;  /* Diagnostic: I2C transmit-abort reason: ADDED */ 
 } T_I2C_LLDCB;
 LOCAL T_I2C_LLDCB	ll_devcb[DEV_I2C_UNITNM];
 
@@ -111,6 +114,10 @@ LOCAL void i2c_inthdr( UINT intno )
 	switch ( p_cb->state ) {
 	case I2C_STS_SEND:
 		if(i2c_sts & I2C_INT_TX_EMPTY) {
+			//ADDED: Print the interrupt status and remaining send data for debugging
+			tm_printf((UB*)"I2C SEND IRQ: intr=0x%08X send_remaining=%d first_byte=0x%02X\n",
+						i2c_sts, p_cb->sdat_num, *(p_cb->sbuf));
+						//^^^
 			cmd = *(p_cb->sbuf)++ & I2C_DATA_CMD_DAT;
 			if(--(p_cb->sdat_num)) {
 				cmd |= I2C_DATA_CMD_CMD_WRITE;
@@ -154,6 +161,12 @@ LOCAL void i2c_inthdr( UINT intno )
 		out_w(I2C_INTR_MASK(unit), 0);	// Mask all innterrupts
 		p_cb->ioerr = E_IO;
 		p_cb->err_reason = i2c_sts;
+		
+		//ADDED
+		if (i2c_sts & I2C_INT_TX_ABRT) {
+			p_cb->abort_source = in_w(I2C_TX_ABRT_SOURCE(unit));
+		}
+
 		p_cb->state = I2C_STS_STOP;
 		wup = TRUE;
 	}
@@ -169,6 +182,9 @@ LOCAL void i2c_inthdr( UINT intno )
 }
 /*----------------------------------------------------------------------
  * Execution of communication
+ * Function chooses what to do based on p_cb->sdat_num:
+ 	- If sdat_num > 0, it enters the send phase.
+ 	- If sdat_num == 0, it enters the receive phase and issues a read command.
  */
 LOCAL ER i2c_trans(INT unit, T_I2C_LLDCB *p_cb)
 {
@@ -179,9 +195,74 @@ LOCAL ER i2c_trans(INT unit, T_I2C_LLDCB *p_cb)
 
 	p_cb->ioerr = err = E_OK;
 
-	out_w(I2C_TAR(unit), p_cb->sadr & I2C_TAR_7BIT_ADR);	// Set slave address
-	out_w(I2C_INTR_MASK(unit), 0);				// Mask all innterrupts
-	out_w(I2C_ENABLE(unit), I2C_ENABLE_ENABLE);		// Enable I2C
+	p_cb->abort_source = 0;
+	p_cb->err_reason = 0;
+
+	// ADDED: Clear the abort_source at the start of a transaction
+	/* Mask interrupts and disable the controller first */
+	out_w(I2C_INTR_MASK(unit), 0);
+	out_w(I2C_ENABLE(unit), 0);
+
+	/* Wait briefly for the controller to become disabled. */
+	{
+		UW timeout = 10000;
+
+		while ((in_w(I2C_ENABLE_STATUS(unit)) & 1U) != 0U) {
+			if (--timeout == 0U) {
+				tm_printf((UB*)"I2C ERROR: controller did not disable\n");
+				return E_IO;
+			}
+		}
+	}
+
+
+	/* Clear pending interrupt and abort conditions */
+	(void)in_w(I2C_CLR_INTR(unit));
+	(void)in_w(I2C_CLR_TX_ABRT(unit));
+
+	/* Set target address while the controller is disabled */
+	out_w(I2C_TAR(unit), p_cb->sadr & I2C_TAR_7BIT_ADR);
+
+	/* Enable the controller */
+	out_w(I2C_ENABLE(unit), I2C_ENABLE_ENABLE);
+
+	// p_cb->ioerr = err = E_OK;
+	// out_w(I2C_TAR(unit), p_cb->sadr & I2C_TAR_7BIT_ADR);	// Set slave address
+	// out_w(I2C_INTR_MASK(unit), 0);				// Mask all innterrupts
+	// out_w(I2C_ENABLE(unit), I2C_ENABLE_ENABLE);		// Enable I2C
+
+	// ADDED: Debugging output to show the state of the I2C registers after enabling
+
+	UW gpio_levels = *((volatile UW *)0xD0000004);
+
+	tm_printf(
+		(UB*)"GPIO LEVEL: SDA=%d SCL=%d\n",
+		(gpio_levels >> 4) & 1,
+		(gpio_levels >> 5) & 1
+	);
+
+
+	tm_printf(
+		(UB*)"I2C DEBUG: unit=%d requested=0x%02X TAR=0x%08X ENABLE=0x%08X\n",
+		unit,
+		p_cb->sadr,
+		in_w(I2C_TAR(unit)),
+		in_w(I2C_ENABLE_STATUS(unit))
+	);
+
+	tm_printf(
+		(UB*)"GPIO DEBUG: GP4_CTRL=0x%08X GP5_CTRL=0x%08X\n",
+		in_w(GPIO_CTRL(4)),
+		in_w(GPIO_CTRL(5))
+	);
+
+	tm_printf(
+		(UB*)"GPIO PAD: GP4=0x%08X GP5=0x%08X\n",
+		in_w(GPIO(4)),
+		in_w(GPIO(5))
+	);
+	// ^^^^^^^^^^^^
+
 	(void)in_w(I2C_CLR_INTR(unit));				// Clear all Interrupt Registers
 	in_w(I2C_CLR_TX_ABRT(unit));				// Clear Transmit abort
 
@@ -198,6 +279,10 @@ LOCAL ER i2c_trans(INT unit, T_I2C_LLDCB *p_cb)
 				cmd = I2C_DATA_CMD_CMD_READ | I2C_DATA_CMD_STOP;
 			}
 			set_w(I2C_INTR_MASK(unit), I2C_INT_RX_FULL|I2C_INT_ERROR);
+			
+			tm_printf((UB*)"I2C CMD: state=%d send_remaining=%d recv_remaining=%d cmd=0x%08X\n",
+					p_cb->state, p_cb->sdat_num, p_cb->rdat_num, cmd);
+
 			out_w(I2C_DATA_CMD(unit), cmd);				
 			p_cb->state = I2C_STS_RECV;
 		}
@@ -220,6 +305,34 @@ LOCAL ER i2c_trans(INT unit, T_I2C_LLDCB *p_cb)
 		}
 		else err = p_cb->ioerr;
 	}
+
+	// ADDED: Debugging output to show the state of the I2C registers after the transaction
+	tm_printf(
+		(UB*)"I2C END: STATUS=0x%08X RAW_INTR=0x%08X ABORT=0x%08X\n",
+		in_w(I2C_STATUS(unit)),
+		in_w(I2C_RAW_INTR_STAT(unit)),
+		p_cb->abort_source
+	);
+
+	tm_printf(
+		(UB*)"ABORT SOURCE: 0x%08X\n",
+		p_cb->abort_source
+	);
+
+	if (p_cb->abort_source & (1U << 0))
+		tm_printf((UB*)"ABORT: 7-bit address NACK\n");
+
+	if (p_cb->abort_source & (1U << 1))
+		tm_printf((UB*)"ABORT: 10-bit address first-byte NACK\n");
+
+	if (p_cb->abort_source & (1U << 2))
+		tm_printf((UB*)"ABORT: 10-bit address second-byte NACK\n");
+
+	if (p_cb->abort_source & (1U << 3))
+		tm_printf((UB*)"ABORT: data byte NACK\n");
+
+	/// ^^^^^^^^^^^^^
+
 	out_w(I2C_ENABLE(unit), 0);				// Disable I2C
 
 	return err;
@@ -236,6 +349,7 @@ Inline void set_com_start(UW unit, UW sadr, UW sdat_num, UW rdat_num, UB *sbuf, 
 	ll_devcb[unit].rdat_num	= rdat_num;	/* Number of receive data */
 	ll_devcb[unit].sbuf	= sbuf;		/* Send buffer */
 	ll_devcb[unit].rbuf	= rbuf;		/* Receive buffer */
+	ll_devcb[unit].abort_source = 0; // ADDED: clear abort_source at the start of a transaction
 }
 
 
@@ -292,11 +406,38 @@ EXPORT W dev_i2c_llctl( UW unit, INT cmd, UW p1, UW p2, UW *pp)
 	case LLD_I2C_EXEC:
 		set_com_start( unit, p_ex->sadr, p_ex->snd_size, p_ex->rcv_size, p_ex->snd_data, p_ex->rcv_data);
 		err = i2c_trans(unit, &ll_devcb[unit]);
+		if (err < E_OK) { //ADDED: print error message for debugging
+			//
+		}
 		if(err >= E_OK) err = p_ex->snd_size + p_ex->rcv_size;
 		break;
 	}
 	
 	return (W)err;
+}
+
+/*----------------------------------------------------------------------
+ * Get I2C transmit-abort reason
+ * Returns the value of the TX_ABRT_SOURCE register for the specified unit.
+ * If the unit number is invalid, returns 0xFFFFFFFF. ADDED
+ */
+EXPORT UW dev_i2c_get_abort_source(UW unit)
+{
+    if (unit >= DEV_I2C_UNITNM) {
+        return 0xFFFFFFFF;
+    }
+
+    return ll_devcb[unit].abort_source;
+}
+
+// ADDED
+EXPORT UW dev_i2c_get_error_reason(UW unit)
+{
+    if (unit >= DEV_I2C_UNITNM) {
+        return 0xFFFFFFFF;
+    }
+
+    return ll_devcb[unit].err_reason;
 }
 
 /*----------------------------------------------------------------------
