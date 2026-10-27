@@ -1,0 +1,26 @@
+{
+    "configurations": [
+        {
+            "name": "Pico-RP2040",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/include",
+                "${workspaceFolder}/include/sys",
+                "${workspaceFolder}/include/sys/sysdepend",
+                "${workspaceFolder}/include/sys/sysdepend/cpu",
+                "${workspaceFolder}/include/sys/sysdepend/cpu/rp2040",
+                "${workspaceFolder}/include/sys/sysdepend/pico_rp2040",
+                "${workspaceFolder}/app_program/subsystem4"
+            ],
+            "defines": [
+                "TARGET_DIR=pico_rp2040",
+                "CPU=rp2040"
+            ],
+            "compilerPath": "C:\\Users\\TYX\\.pico-sdk\\toolchain\\15_2_Rel1\\bin\\arm-none-eabi-gcc.exe",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "windows-gcc-arm"
+        }
+    ],
+    "version": 4
+}

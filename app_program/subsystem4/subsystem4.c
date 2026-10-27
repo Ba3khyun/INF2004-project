@@ -44,9 +44,32 @@ EXPORT ER subsystem4_init(void)
 	return (alm_monitor < E_OK) ? alm_monitor : E_OK;
 }
 
+
 EXPORT ER subsystem4_start(void)
 {
-	/* No affinity: the scheduler may run it on either core */
-	ID tid = app_start_task(monitor_task, S4_PRI_MONITOR, 0, "monitor_task");
-	return (tid < E_OK) ? tid : E_OK;
+    /* Start the existing monitor task */
+    ID tid = app_start_task(
+        monitor_task,
+        S4_PRI_MONITOR,
+        0,
+        "monitor_task"
+    );
+
+    if (tid < E_OK) {
+        return tid;
+    }
+
+    /* Start Buddy 4's IMU processing task */
+    tid = app_start_task(
+        imu_task,
+        S4_PRI_MONITOR,
+        0,
+        "imu_task"
+    );
+
+    if (tid < E_OK) {
+        return tid;
+    }
+
+    return E_OK;
 }

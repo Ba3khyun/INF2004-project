@@ -30,4 +30,7 @@ IMPORT UW	s4_lines_received;	/* for the tests */
 IMPORT void	monitor_task(INT stacd, void *exinf);
 IMPORT void	monitor_alarm_handler(void *exinf);
 
+/* Buddy 4 IMU processing task */
+IMPORT void imu_task(INT stacd, void *exinf);
+
 #endif /* SUBSYSTEM4_H */
