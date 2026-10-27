@@ -47,28 +47,19 @@ EXPORT ER subsystem4_init(void)
 
 EXPORT ER subsystem4_start(void)
 {
-    /* Start the existing monitor task */
+    tm_printf((UB*)"S4: entering subsystem4_start\n");
+
     ID tid = app_start_task(
-        monitor_task,
-        S4_PRI_MONITOR,
-        0,
-        "monitor_task"
-    );
-
-    if (tid < E_OK) {
-        return tid;
-    }
-
-    /* Start Buddy 4's IMU processing task */
-    tid = app_start_task(
         imu_task,
         S4_PRI_MONITOR,
         0,
         "imu_task"
     );
 
+    tm_printf((UB*)"S4: imu_task returned %d\n", (INT)tid);
+
     if (tid < E_OK) {
-        return tid;
+        return (ER)tid;
     }
 
     return E_OK;

@@ -23,6 +23,26 @@ if(NOT DEFINED PICO_TOOLCHAIN_PATH AND DEFINED ENV{PICO_TOOLCHAIN_PATH})
         "Root of the Arm GNU toolchain (the folder containing bin/)")
 endif()
 
+if(NOT PICO_TOOLCHAIN_PATH AND NOT DEFINED ENV{PICO_TOOLCHAIN_PATH})
+    file(GLOB _pico_toolchain_candidates LIST_DIRECTORIES true
+        "$ENV{USERPROFILE}/.pico-sdk/toolchain/*"
+        "$ENV{HOME}/.pico-sdk/toolchain/*")
+    set(_pico_toolchain_dirs "")
+    foreach(_candidate IN LISTS _pico_toolchain_candidates)
+        if(EXISTS "${_candidate}/bin/arm-none-eabi-gcc"
+           OR EXISTS "${_candidate}/bin/arm-none-eabi-gcc.exe")
+            list(APPEND _pico_toolchain_dirs "${_candidate}")
+        endif()
+    endforeach()
+    if(_pico_toolchain_dirs)
+        list(SORT _pico_toolchain_dirs COMPARE NATURAL ORDER DESCENDING)
+        list(GET _pico_toolchain_dirs 0 PICO_TOOLCHAIN_PATH)
+        set(PICO_TOOLCHAIN_PATH "${PICO_TOOLCHAIN_PATH}" CACHE PATH
+            "Root of the Arm GNU toolchain (the folder containing bin/)")
+        message(STATUS "PICO_TOOLCHAIN_PATH not set; using ${PICO_TOOLCHAIN_PATH}")
+    endif()
+endif()
+
 if(PICO_TOOLCHAIN_PATH)
     set(_pico_toolchain_hints "${PICO_TOOLCHAIN_PATH}/bin")
     # try_compile projects only inherit variables listed here.

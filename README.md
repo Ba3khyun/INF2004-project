@@ -131,10 +131,11 @@ Any option from section 3 also works as a `-D` value, e.g.
 `cmake --preset pico-w -DCRASH_REPORT=1`. Options are remembered in the
 build folder, so after changing one just build again.
 
-`CMakePresets.json` points at the toolchain and SDK installed by the
-Raspberry Pi Pico VS Code extension. If yours are elsewhere, edit
-`PICO_SDK_PATH` and `PICO_TOOLCHAIN_PATH` in that file, or pass them:
+The CMake build looks for the SDK and toolchain installed by the Raspberry Pi
+Pico VS Code extension in your user profile. If yours are elsewhere, pass
+their locations:
 `cmake --preset pico-w -DPICO_SDK_PATH=/path/to/pico-sdk`.
+You can also pass `-DPICO_TOOLCHAIN_PATH=/path/to/toolchain`.
 
 To build a single-core, UART-only or test version, see section 3.
 

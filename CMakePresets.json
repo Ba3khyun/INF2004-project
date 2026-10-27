@@ -14,9 +14,6 @@
       "binaryDir": "${sourceDir}/build",
       "toolchainFile": "${sourceDir}/cmake/arm-none-eabi.cmake",
       "cacheVariables": {
-        "CMAKE_MAKE_PROGRAM": "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/ninja/ninja.exe",
-        "PICO_SDK_PATH": "C:/Users/Jason Lai/.pico-sdk/sdk/2.3.0",
-        "PICO_TOOLCHAIN_PATH": "C:/Users/Jason Lai/.pico-sdk/toolchain/15_2_Rel1",
         "SMP": "1",
         "CONSOLE": "usb_cdc",
         "WIFI": "cyw43",
