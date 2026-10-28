@@ -42,7 +42,7 @@
 #define	DEVCNF_I2C1_INTPRI	2
 
 /* Communication timeout time */
-#define	DEVCNF_I2C0_TMO		1000
+#define	DEVCNF_I2C0_TMO		2
 #define	DEVCNF_I2C1_TMO		1000
 
 #endif		/* __DEV_I2C_CNF_RP2040_H__ */
