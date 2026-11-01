@@ -1,0 +1,68 @@
+# Buddy 1 host unit tests -- 2026-10-29T00:38:40+08:00
+# base commit: 2eb0a68 + uncommitted working tree
+# gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+[TEST] S1-H01 PASS  telemetry round trip, typical values
+[TEST] S1-H02 PASS  telemetry round trip, minimum values
+[TEST] S1-H03 PASS  telemetry round trip, maximum values
+[TEST] S1-H04 PASS  telemetry round trip, n/a sentinels
+[TEST] S1-H05 PASS  out-of-range fields rejected before encoding
+[TEST] S1-H06 PASS  signed speed: -1=0xFF, -100=0x9C, n/a=0x80
+        golden frame: 45 34 34 12 FB 19 28 A5 00
+[TEST] S1-H07 PASS  golden frame 45 34 34 12 FB 19 28 A5 00 (LE time/faults)
+[TEST] S1-H08 PASS  each of the 6 reserved bits set -> frame rejected
+[TEST] S1-H09 PASS  only protocol version 1 decodes (0, 2, 3 rejected)
+[TEST] S1-H10 PASS  lengths 0, 8, 10 and NULL rejected
+[TEST] S1-H12 PASS  decoder rejects speed 101/-127 and obstacle 101
+[TEST] S1-H13 PASS  exhaustive speed/obstacle/hump/fault-bit validity and round trip
+[TEST] S1-H14 PASS  telemetry_q 4-byte message: round trip, ranges, reserved bits
+[TEST] S1-H15 PASS  remote_cmd_q 2-byte message: round trip and rejects
+[TEST] S1-H16 PASS  CRC-8/SMBUS check value 0xF4
+        golden abort seq 7: 05 07 54
+[TEST] S1-H17 PASS  command frames: abort=05, pause=09, resume=0D, CRC
+[TEST] S1-H20 PASS  valid abort -> flg_safety + remote_cmd_q, back to SHARE_TELEMETRY
+[TEST] S1-H21 PASS  duplicate abort (same seq) ignored, nothing re-posted
+[TEST] S1-H22 PASS  short/long/oversize/corrupted payloads ignored, FLT_CMD_MALFORMED set
+[TEST] S1-H23 PASS  unknown command type ignored
+[TEST] S1-H24 PASS  version 2 and reserved bit rejected, FLT_PROTO_ERROR set
+[TEST] S1-H25a PASS  RESUME as first command after boot rejected (no baseline)
+[TEST] S1-H25b PASS  RESUME with an older sequence rejected
+[TEST] S1-H25c PASS  older PAUSE still accepted (fail-safe direction)
+[TEST] S1-H25d PASS  sequence wrap 255 -> 0 treated as newer
+[TEST] S1-H26 PASS  pause -> remote_cmd_q only (no Safety flag)
+[TEST] S1-H27 PASS  resume rejected while local ESTOP is latched
+[TEST] S1-H28 PASS  same resume accepted after the local reset
+[TEST] S1-H29 PASS  reconnect with ESTOP latched: no command replayed, nothing routed
+[TEST] S1-H30 PASS  abort processed even as the link drops, then RECONNECTING
+[TEST] S1-H31 PASS  abort in RECONNECTING returns to RECONNECTING
+[TEST] S1-H32 PASS  remote_cmd_q full: abort still reaches flg_safety
+[TEST] S1-H33 PASS  FLT_CMD_MALFORMED reported in exactly one frame, then cleared
+[TEST] S1-H34 PASS  ESTOP shown in telemetry, never written by B1
+[TEST] S1-H40 PASS  DISCONNECTED->CONNECTING_WIFI->CONNECTING_MQTT->SHARE; 100 frames in 10 s
+        worst simulated detection: 1600 ms (poll 10 ms)
+[TEST] S1-H41 PASS  silent TCP loss detected <= 2 s in 10/10 trials
+[TEST] S1-H42 PASS  Wi-Fi loss -> RECONNECTING at once, leave + disconnect
+[TEST] S1-H43 PASS  MQTT loss -> RECONNECTING, FLT_MQTT_LINK
+        back-off ms: 500 1000 2000 4000 4000 ... retry=7, max ops/step=5
+[TEST] S1-H44 PASS  back-off 0.5/1/2/4 s capped, retry saturates at 7, bounded work per step
+[TEST] S1-H45 PASS  AP restored -> SHARE_TELEMETRY, faults cleared, publishing resumes
+[TEST] S1-H46 PASS  30 s outage: backlog stays at 16 (newest kept), flushed after recovery
+        sizeof(WIFI_SM) = 344 bytes (static, constant during outage)
+        5 min soak: published=2702 built=3001 dropped=299 flushed=17 recovery=31520 ms
+[TEST] S1-H47 PASS  5 min soak: every frame published or counted as dropped, backlog <= 16
+[TEST] S1-H48 PASS  publish busy: frames kept in backlog, sent later
+[TEST] S1-H49 PASS  join that never completes times out after 15 s
+[TEST] S1-H50 PASS  broker that never answers times out after 5 s
+[TEST] S1-H51 PASS  350 ms starvation -> 1 frame, not a burst of 3
+[TEST] S1-H11 PASS  telemetry sequence wraps 255 -> 0
+        telemetry payload: JSON 98 B typical / 123 B worst  vs binary 9 B
+        command payload:   JSON 24 B typical / 33 B worst  vs binary 3 B
+        MQTT PUBLISH on the wire: JSON 118 B / binary 29 B per frame; at 10 Hz 1180 B/s vs 290 B/s
+        MQTT command on the wire: JSON 42 B / binary 21 B
+        telemetry_q element: 4 B packed (8 B in the kernel buffer) vs 32 B for 8 x 32-bit fields (36 B in the buffer)
+        telemetry_q RAM (16 deep): 128 B vs 576 B;  backlog 16 x 9 = 144 B vs 16 x 123 = 1968 B JSON
+[TEST] S1-H60 PASS  binary telemetry/command payloads are >10x / >5x smaller than JSON
+[TEST] subsystem1-host SUMMARY 48 passed, 0 failed
+static analysis (gcc -fanalyzer -Werror): clean
+run_host_tests.sh exit=0
+# tools/wifi_telemetry_tool.py (Python 3.12.3)
+selftest PASS

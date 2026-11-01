@@ -161,6 +161,16 @@ static void run_diagnostic_scan(void)
 #endif
 
 #if TM_NET_LWIP
+/* With MQTT=1 the association is driven by the application state machine
+ * (wifi_app_poll -> cyw43_utk_join/leave) with its own bounded back-off, so
+ * the fixed 5 s internal rejoin below is disabled to keep one owner of the
+ * reconnect policy. Without MQTT the original self-healing join is kept. */
+#if TM_MQTT
+#define CYW43_UTK_APP_CONTROLS_JOIN 1
+#else
+#define CYW43_UTK_APP_CONTROLS_JOIN 0
+#endif
+
 /* Caller must hold cyw43_thread_enter(). Returns the driver's acceptance of
  * the join *request*; the actual outcome arrives later as a link status.
  *
@@ -247,8 +257,13 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
 
         /* Only the *request* outcome. The AP's verdict shows up later as
          * radio_status.link_status, polled below, which is also where a
-         * failed association gets retried. */
+         * failed association gets retried. With MQTT=1 the application
+         * issues the first join itself (CONNECTING_WIFI). */
+#if CYW43_UTK_APP_CONTROLS_JOIN
+        result = 0;
+#else
         result = wifi_try_join();
+#endif
 #else
         result = cyw43_wifi_scan(&cyw43_state, &options, &radio_status,
                                  scan_result);
@@ -270,7 +285,16 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
      * waking a failed high-rate service must not interfere with USB or the
      * rest of the kernel qualification. */
     if(result != 0) {
+#if TM_MQTT
+        /* Keep the application logic alive (it reports the Wi-Fi fault and
+         * keeps draining telemetry_q) without touching the failed radio. */
+        for(;;) {
+            wifi_app_poll();
+            (void)tk_dly_tsk(10);
+        }
+#else
         for(;;) (void)tk_dly_tsk(1000);
+#endif
     }
 
 #if TM_NET_LWIP
@@ -303,7 +327,8 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
             /* Negative == the association attempt is over and lost. Arm a
              * retry; a positive-but-not-UP status (JOIN/NOIP) is still making
              * progress, so leave it alone and let DHCP finish. */
-            rejoin_at = (radio_status.link_status < 0)?
+            rejoin_at = (radio_status.link_status < 0 &&
+                         !CYW43_UTK_APP_CONTROLS_JOIN)?
                         time_us_64() + WIFI_REJOIN_DELAY_US: 0;
         }
 
@@ -334,18 +359,45 @@ void cyw43_utk_task(int32_t stacd, void *exinf)
 #if TM_NET_LWIP
         sys_check_timeouts();
 #if TM_MQTT
-        /* mqtt_utk_start() is idempotent (see its own connecting/is_connected
-         * guard), so calling it on every poll iteration once the link is up
-         * is fine -- it only actually does anything on the first call, or
-         * again after connection_cb() schedules a retry. */
-        if(radio_status.link_status == CYW43_LINK_UP) {
-            mqtt_utk_start();
-        }
+        /* IS-06 Wi-Fi Telemetry Task logic (state machine, telemetry_q
+         * drain, MQTT publish/command parse). Non-blocking; runs here so
+         * that this task stays the only user of cyw43/lwIP/MQTT. */
+        wifi_app_poll();
 #endif
 #endif
         (void)tk_dly_tsk(CYW43_POLL_MS);
     }
 }
+
+#if TM_NET_LWIP
+/* Application join control (see cyw43_utk.h). Same task only. */
+int32_t cyw43_utk_join(void)
+{
+    int32_t err;
+
+    cyw43_thread_enter();
+    err = wifi_try_join();
+    cyw43_thread_exit();
+    return err;
+}
+
+void cyw43_utk_leave(void)
+{
+    cyw43_thread_enter();
+    (void)cyw43_wifi_leave(&cyw43_state, CYW43_ITF_STA);
+    cyw43_thread_exit();
+}
+
+int32_t cyw43_utk_link(void)
+{
+    int32_t s = radio_status.link_status;
+
+    if(s == CYW43_LINK_UP)                         return CYW43_UTK_LINK_UP;
+    if(s == CYW43_LINK_JOIN || s == CYW43_LINK_NOIP) return CYW43_UTK_LINK_JOINING;
+    if(s < 0)                                      return CYW43_UTK_LINK_FAIL;
+    return CYW43_UTK_LINK_DOWN;
+}
+#endif
 
 void cyw43_utk_get_status(T_CYW43_UTK_STATUS *status)
 {

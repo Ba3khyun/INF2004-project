@@ -177,6 +177,10 @@ CFLAGS  += -DCNF_SMP=1
 ASFLAGS += -DCNF_SMP=1
 endif
 CFLAGS  += -DAPP_TEST=$(TEST)
+# Extra defines for one-off builds, e.g.
+#   make NET=lwip MQTT=1 TEST=1 EXTRA_CFLAGS=-DS2_TEST_MOTORS=1
+# Not part of the build profile: touch the affected .c file when changing it.
+CFLAGS  += $(EXTRA_CFLAGS)
 CFLAGS  += -DTM_CONSOLE_UART=$(CRASH_REPORT)
 ifeq ($(CRASH_REPORT),0)
 CFLAGS  += -DBOARD_UART0_FREE=1

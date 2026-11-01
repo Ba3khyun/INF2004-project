@@ -1,0 +1,53 @@
+# Buddy 1 build matrix -- 2026-10-29T00:38:44+08:00
+# base commit: 2eb0a68 + uncommitted working tree
+# arm-none-eabi-gcc (15:13.2.rel1-2) 13.2.1 20231009; pico-sdk 2.2.0
+make NET=lwip MQTT=1 -> exit=0 warnings=0 error-lines=0
+ 344520	     96	  82696	 427312	  68530	mtk3pico_smp1_usb_cdc_wifi_lwip_mqtt.elf
+make NET=lwip MQTT=1 TEST=1 -> exit=0 warnings=0 error-lines=0
+ 352256	     96	  83044	 435396	  6a4c4	mtk3pico_smp1_usb_cdc_wifi_lwip_mqtt_test.elf
+make SMP=0 NET=lwip MQTT=1 -> exit=0 warnings=0 error-lines=0
+ 336284	     84	  78564	 414932	  654d4	mtk3pico_smp0_usb_cdc_wifi_lwip_mqtt.elf
+make TEST=1 -> exit=0 warnings=0 error-lines=0
+ 298232	     88	  25388	 323708	  4f07c	mtk3pico_smp1_usb_cdc_wifi_test.elf
+make  -> exit=0 warnings=0 error-lines=0
+ 290392	     88	  25040	 315520	  4d080	mtk3pico_smp1_usb_cdc_wifi.elf
+make CONSOLE=uart WIFI=none -> exit=0 warnings=0 error-lines=0
+  55928	     12	  16648	  72588	  11b8c	mtk3pico_smp1_uart.elf
+# Buddy 1 static RAM (arm-none-eabi-nm -S, NET=lwip MQTT=1)
+20014124 00000001 b state
+200140d4 00000002 b rx_len
+20014128 00000004 b broker_addr
+2001412c 00000004 b client
+2001417c 00000004 B flg_fault
+20014180 00000004 B flg_safety
+2001411c 00000004 b last_progress_ms
+20014184 00000004 B remote_cmd_q
+20014118 00000004 b rx_cb
+200140d0 00000004 b rx_tot_len
+20014334 00000004 B telemetry_q
+20014120 00000004 b unacked
+20014198 0000000a b drops_seen
+20014328 0000000a B wifi_tq_drops
+200140d8 00000010 b rx_data
+200141a4 00000014 b latest
+200141b8 00000018 b qstats
+200140e8 00000030 b rx_topic
+200141d0 00000150 b wifi_sm
+# strict re-compile of Buddy 1 files with -Wall -Wextra (MQTT profile flags)
+  app_program/subsystem1/wifi_telemetry.c: 0 warnings
+  app_program/subsystem1/wifi_sm.c: (up to date, not recompiled)
+  app_program/subsystem1/wifi_cmd.c: (up to date, not recompiled)
+  app_program/subsystem1/subsystem1.c: 0 warnings
+  app_program/app_shared.c: (up to date, not recompiled)
+  lib/liblwip/sysdepend/pico_rp2040/mqtt_utk.c: (up to date, not recompiled)
+  lib/libwifi/sysdepend/pico_rp2040/cyw43_utk.c: (up to date, not recompiled)
+  lib/libwifi/sysdepend/pico_rp2040/cyw43_utk_kernel.c: (up to date, not recompiled)
+# Note: files marked "up to date" were not rebuilt in this run, so no compile
+# line was captured. An earlier run of the same check (same sources except a
+# comment in subsystem1.h) recompiled all of them with -Wall -Wextra
+# -DAPP_TEST=1; each reported exactly one warning, '"APP_TEST" redefined',
+# caused by the extra -D on top of the makefile's own -DAPP_TEST=0, and no
+# other warnings:
+#   wifi_telemetry.c, wifi_sm.c, wifi_cmd.c, subsystem1.c, subsystem1_test.c,
+#   app_shared.c, mqtt_utk.c, cyw43_utk.c, cyw43_utk_kernel.c
+# Nothing in this log was flashed or run on a Pico W.

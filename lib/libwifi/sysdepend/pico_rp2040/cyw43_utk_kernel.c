@@ -5,10 +5,22 @@
 
 IMPORT void cyw43_utk_task(INT stacd, void *exinf);
 
-/* USB CDC drains at priority 3 on the same physical core.  Keep radio polling
- * below it so firmware download and the 2 ms poll cadence cannot overflow the
- * console ring, while remaining well above the qualification task. */
-#define CYW43_TASK_PRIORITY  4
+/* IS-06: this task IS the Wi-Fi Telemetry Task (Buddy 1).  It runs the
+ * radio, lwIP, MQTT and -- with MQTT=1 -- the application state machine via
+ * wifi_app_poll(), so it takes the Wi-Fi Telemetry priority from the team's
+ * task table: 40, the lowest application priority, below Safety (5), Motion
+ * Control (10), Vehicle Controller (12), Line Following (15), IMU (18),
+ * Obstacle Scanning (20) and Barcode Decoding (22).  Network work therefore
+ * only runs when no control task is ready on core 0.  It was 4 in the
+ * template, i.e. above every application task including Safety.
+ * Needs CNF_MAX_TSKPRI > 40 (config/config.h).  Must equal S1_PRI_WIFI in
+ * app_program/subsystem1/subsystem1.h; S1-U05 checks it on target. */
+#ifndef CYW43_TASK_PRIORITY
+#define CYW43_TASK_PRIORITY  40
+#endif
+#if defined(CNF_MAX_TSKPRI) && (CNF_MAX_TSKPRI <= CYW43_TASK_PRIORITY)
+#error "CNF_MAX_TSKPRI must be greater than CYW43_TASK_PRIORITY"
+#endif
 #if TM_NET_LWIP
 /* lwIP's own call chains (tcp_input/dhcp/etharp) run on this same task and
  * go deeper than the bare radio poll loop did. */

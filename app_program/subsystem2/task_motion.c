@@ -1,0 +1,411 @@
+/*
+ *	task_motion.c
+ *	Subsystem 2 -- Motion Control task (Buddy 2).
+ *
+ *	Ported from buddy2_motion_control/buddy2_motion_control.c.  The
+ *	state machine (IDLE / FORWARD / LEFT / RIGHT / EMERGENCY_STOP), the
+ *	targets, the PWM duty and both timeouts are unchanged.  What changed:
+ *	  original                          here
+ *	  main() superloop                  motion_task, PRI_MOTION, core 1
+ *	  getchar_timeout_us() F/L/R/X/C    motion_cmd_q (same letters)
+ *	  time_us_64() + sleep_ms(1)        10 ms cyclic handler cyc_motion
+ *	                                    wakes the task; tk_get_otm()
+ *	  printf                            tm_printf (no %f: milli-revs)
+ *	  stop when USB monitor unplugged   dropped (commands no longer come
+ *	                                    from the monitor)
+ *	  --                                SAFETY_ESTOP_LATCHED, FLT_MOTOR,
+ *	                                    TQ_FIELD_SPEED (team interfaces)
+ *
+ *	This task is the ONLY caller of the drv_motion motor/encoder API.
+ *
+ *	APIs shown: tk_rcv_mbf (with timeout), tk_ref_flg, tk_set_flg,
+ *	            tk_clr_flg, tk_get_otm
+ */
+
+#include "subsystem2.h"
+#include "drv_motion.h"
+#include "../subsystem1/subsystem1.h"	/* IF-B1-01: telemetry_post */
+
+/* ========================
+ * Configuration
+ * ======================== */
+#define MOVE_TIMEOUT_MS		4000u
+#define ENCODER_TIMEOUT_MS	250u
+
+#define FORWARD_REVOLUTIONS	0.50f
+#define TURN_REVOLUTIONS	0.25f
+
+#define MOVE_PWM		20.0f
+
+/* Speed telemetry (TQ_FIELD_SPEED, cm/s).  WHEEL_DIAMETER_CM is a
+   placeholder: measure the wheel and correct it. */
+#define TELEM_PERIOD_MS		100u
+#define WHEEL_DIAMETER_CM	6.5f
+
+/* ========================
+ * Motion states
+ * ======================== */
+typedef enum
+{
+	MOTION_IDLE,
+	MOTION_FORWARD,
+	MOTION_LEFT,
+	MOTION_RIGHT,
+	MOTION_EMERGENCY_STOP
+} MotionState;
+
+/* All state below is private to motion_task: no locking needed. */
+LOCAL MotionState motion_state = MOTION_IDLE;
+
+LOCAL BOOL left_done = FALSE;
+LOCAL BOOL right_done = FALSE;
+
+LOCAL UW start_left = 0u;
+LOCAL UW start_right = 0u;
+
+LOCAL UW previous_left = 0u;
+LOCAL UW previous_right = 0u;
+
+LOCAL UW start_time = 0u;		/* ms, tk_get_otm */
+LOCAL UW last_left_pulse = 0u;
+LOCAL UW last_right_pulse = 0u;
+
+LOCAL float target_revolutions = 0.0f;
+
+LOCAL UW tlm_time = 0u;
+LOCAL UW tlm_left = 0u;
+LOCAL UW tlm_right = 0u;
+
+/* Monotonic milliseconds; differences are wrap-safe as UW. */
+LOCAL UW now_ms(void)
+{
+	SYSTIM t;
+
+	tk_get_otm(&t);
+	return t.lo;
+}
+
+LOCAL INT milli_rev(float rev)
+{
+	return (INT)(rev * 1000.0f + 0.5f);
+}
+
+LOCAL BOOL is_moving(void)
+{
+	return motion_state == MOTION_FORWARD ||
+	       motion_state == MOTION_LEFT ||
+	       motion_state == MOTION_RIGHT;
+}
+
+/* ========================
+ * Emergency stop (local latch)
+ * ======================== */
+
+/* fault: TRUE for a motor/turn timeout, which is reported as FLT_MOTOR */
+LOCAL void emergency_stop(const char *reason, BOOL fault)
+{
+	/* Stop immediately and latch emergency state. */
+	motors_brake();
+	motion_state = MOTION_EMERGENCY_STOP;
+
+	left_done = TRUE;
+	right_done = TRUE;
+
+	if (fault) {
+		CHECK(tk_set_flg(flg_fault, FLT_MOTOR), "tk_set_flg FLT_MOTOR");
+	}
+
+	tm_printf((UB*)"\nmotion: EMERGENCY STOP: %s\n", reason);
+	tm_printf((UB*)"motion: motors stopped. Send C to clear.\n");
+}
+
+LOCAL void clear_emergency_stop(void)
+{
+	if (motion_state != MOTION_EMERGENCY_STOP) {
+		tm_printf((UB*)"motion: no emergency stop to clear.\n");
+		return;
+	}
+
+	motors_brake();
+	motion_state = MOTION_IDLE;
+	CHECK(tk_clr_flg(flg_fault, ~(UINT)FLT_MOTOR), "tk_clr_flg FLT_MOTOR");
+
+	tm_printf((UB*)"\nmotion: emergency stop cleared.\n");
+	tm_printf((UB*)"motion: motion commands can be accepted again.\n");
+}
+
+/* ========================
+ * Safety ESTOP (owned by the Safety Handler, read only here)
+ * ======================== */
+
+LOCAL BOOL safety_estop_latched(void)
+{
+	T_RFLG rflg;
+
+	if (tk_ref_flg(flg_safety, &rflg) < E_OK) {
+		return TRUE;		/* cannot tell: fail safe */
+	}
+	return (rflg.flgptn & SAFETY_ESTOP_LATCHED) != 0u;
+}
+
+LOCAL void check_safety(void)
+{
+	if (is_moving() && safety_estop_latched()) {
+		motors_brake();
+		motion_state = MOTION_IDLE;
+		left_done = TRUE;
+		right_done = TRUE;
+		tm_printf((UB*)"\nmotion: aborted, safety ESTOP latched.\n");
+	}
+}
+
+/* ========================
+ * Start movement
+ * ======================== */
+
+LOCAL void start_motion(MotionState command)
+{
+	if (safety_estop_latched()) {
+		tm_printf((UB*)"motion: movement rejected: safety ESTOP latched.\n");
+		return;
+	}
+
+	if (motion_state == MOTION_EMERGENCY_STOP) {
+		tm_printf((UB*)"motion: movement rejected: emergency stop active.\n");
+		return;
+	}
+
+	if (motion_state != MOTION_IDLE) {
+		tm_printf((UB*)"motion: movement rejected: robot is busy.\n");
+		return;
+	}
+
+	motors_brake();
+
+	start_left = encoder_get_left_count();
+	start_right = encoder_get_right_count();
+
+	previous_left = start_left;
+	previous_right = start_right;
+
+	start_time = now_ms();
+	last_left_pulse = start_time;
+	last_right_pulse = start_time;
+
+	left_done = FALSE;
+	right_done = FALSE;
+
+	motion_state = command;
+
+	if (command == MOTION_FORWARD) {
+		target_revolutions = FORWARD_REVOLUTIONS;
+		tm_printf((UB*)"\nmotion: starting FORWARD movement...\n");
+		motor1_forward(MOVE_PWM);
+		motor2_reverse(MOVE_PWM);
+	} else if (command == MOTION_LEFT) {
+		target_revolutions = TURN_REVOLUTIONS;
+		tm_printf((UB*)"\nmotion: starting LEFT turn...\n");
+		motors_left(MOVE_PWM);
+	} else if (command == MOTION_RIGHT) {
+		target_revolutions = TURN_REVOLUTIONS;
+		tm_printf((UB*)"\nmotion: starting RIGHT turn...\n");
+		motors_right(MOVE_PWM);
+	}
+}
+
+/* ========================
+ * Motion update (every MC_TICK_MS)
+ * ======================== */
+
+LOCAL void update_motion(UW now)
+{
+	if (!is_moving()) {
+		return;
+	}
+
+	UW current_left = encoder_get_left_count();
+	UW current_right = encoder_get_right_count();
+
+	UW left_pulses = current_left - start_left;
+	UW right_pulses = current_right - start_right;
+
+	if (current_left != previous_left) {
+		last_left_pulse = now;
+	}
+
+	if (current_right != previous_right) {
+		last_right_pulse = now;
+	}
+
+	float left_revolutions = encoder_left_revolutions(left_pulses);
+	float right_revolutions = encoder_right_revolutions(right_pulses);
+
+	/* Stop left motor when target is reached. */
+	if (!left_done && left_revolutions >= target_revolutions) {
+		motor1_forward(0.0f);
+		left_done = TRUE;
+	}
+
+	/* Stop right motor when target is reached. */
+	if (!right_done && right_revolutions >= target_revolutions) {
+		motor2_reverse(0.0f);
+		right_done = TRUE;
+	}
+
+	/* Both wheels reached the target. */
+	if (left_done && right_done) {
+		motors_brake();
+		motion_state = MOTION_IDLE;
+
+		tm_printf((UB*)"\nmotion: movement completed.\n");
+		tm_printf((UB*)"motion: left  revolutions: %d/1000\n",
+			  milli_rev(left_revolutions));
+		tm_printf((UB*)"motion: right revolutions: %d/1000\n",
+			  milli_rev(right_revolutions));
+		tm_printf((UB*)"motion: motors stopped.\n");
+		return;
+	}
+
+	/* Prevent movement from running indefinitely. */
+	if (now - start_time >= MOVE_TIMEOUT_MS) {
+		emergency_stop("Movement timeout", TRUE);
+		return;
+	}
+
+	/* Stop when a moving wheel loses encoder pulses. */
+	if ((!left_done && now - last_left_pulse >= ENCODER_TIMEOUT_MS) ||
+	    (!right_done && now - last_right_pulse >= ENCODER_TIMEOUT_MS)) {
+		emergency_stop("Encoder timeout", TRUE);
+		return;
+	}
+
+	previous_left = current_left;
+	previous_right = current_right;
+}
+
+/* ========================
+ * Speed telemetry (IF-B1-01)
+ * ======================== */
+
+LOCAL void post_speed(UW now)
+{
+	UW	dt = now - tlm_time;
+	UW	l, r;
+	INT	speed = 0;
+
+	if (dt < TELEM_PERIOD_MS) {
+		return;
+	}
+	l = encoder_get_left_count();
+	r = encoder_get_right_count();
+
+	/* Linear speed only while driving forward; a pivot is 0 cm/s. */
+	if (motion_state == MOTION_FORWARD) {
+		float cm = (encoder_left_distance_cm(l - tlm_left, WHEEL_DIAMETER_CM) +
+			    encoder_right_distance_cm(r - tlm_right, WHEEL_DIAMETER_CM)) / 2.0f;
+		speed = (INT)((cm * 1000.0f) / (float)dt + 0.5f);
+		if (speed > APP_SPEED_MAX) {
+			speed = APP_SPEED_MAX;
+		}
+	}
+	(void)telemetry_post(TQ_FIELD_SPEED, speed);	/* never blocks */
+
+	tlm_time = now;
+	tlm_left = l;
+	tlm_right = r;
+}
+
+/* ========================
+ * Commands
+ * ======================== */
+
+LOCAL void process_command(UB cmd)
+{
+	switch (cmd) {
+	case MC_CMD_STOP:
+		emergency_stop("Stop command", FALSE);
+		break;
+	case MC_CMD_CLEAR:
+		clear_emergency_stop();
+		break;
+	case MC_CMD_FORWARD:
+		start_motion(MOTION_FORWARD);
+		break;
+	case MC_CMD_LEFT:
+		start_motion(MOTION_LEFT);
+		break;
+	case MC_CMD_RIGHT:
+		start_motion(MOTION_RIGHT);
+		break;
+	default:
+		break;		/* motion_cmd_post() rejects these */
+	}
+}
+
+/* ========================
+ * Task
+ * ======================== */
+
+EXPORT volatile UW	motion_tick_count;
+EXPORT volatile UW	motion_ticks_missed;
+
+/* cyc_motion, every MC_TICK_MS (subsystem2.c) */
+EXPORT void motion_cyclic_handler(void *exinf)
+{
+	(void)exinf;
+	(void)tk_wup_tsk(tid_motion);
+}
+
+EXPORT void motion_task(INT stacd, void *exinf)
+{
+	UB	cmd;
+	INT	len;
+	UW	now;
+	ER	er;
+	T_RTSK	self;
+
+	(void)stacd; (void)exinf;
+
+	/* Hardware init happens here so it runs on this task's core: the
+	   encoder interrupt is enabled on the core that calls it. */
+	er = motors_init();
+	if (er >= E_OK) {
+		er = encoders_init();
+	}
+	if (er < E_OK) {
+		motors_brake();
+		CHECK(er, "motion_task hardware init");
+		tk_ext_tsk();
+	}
+
+	tm_printf((UB*)"motion: Buddy 2 Motion Control ready (motion_cmd_q)\n");
+	tm_printf((UB*)"motion:   F = forward, L = left, R = right,"
+		  " X = stop, C = clear stop\n");
+
+	tlm_time = now_ms();
+
+	/* One iteration per 10 ms tick.  The previous loop waited with
+	   tk_rcv_mbf(..., next_update - now); the kernel adds one tick to
+	   every timeout, so that "10 ms" tick really ran every ~20 ms. */
+	while (1) {
+		(void)tk_slp_tsk(TMO_FEVR);		/* woken by cyc_motion */
+		if (tk_ref_tsk(TSK_SELF, &self) == E_OK && self.wupcnt > 0) {
+			motion_ticks_missed += (UW)self.wupcnt;	/* overrun */
+			(void)tk_can_wup(TSK_SELF);
+		}
+
+		/* Commands first (at most the queue depth), never waiting */
+		while ((len = tk_rcv_mbf(motion_cmd_q, &cmd, TMO_POL)) == MC_CMD_LEN) {
+			process_command(cmd);
+		}
+		if (len != E_TMOUT) {
+			CHECK(len, "tk_rcv_mbf motion_cmd_q");
+		}
+
+		now = now_ms();
+		check_safety();
+		update_motion(now);
+		post_speed(now);
+		motion_tick_count++;
+	}
+}

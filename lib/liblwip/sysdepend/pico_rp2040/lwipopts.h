@@ -55,6 +55,12 @@
  * room to spare; each slot is only a few bytes. */
 #define MEMP_NUM_SYS_TIMEOUT        (LWIP_NUM_SYS_TIMEOUT_INTERNAL + 4)
 
+/* IS-06 telemetry: a QoS 0 publish holds one request slot until TCP acks it.
+ * One live frame + up to 3 backlog frames per 100 ms, plus one in-flight
+ * subscribe, needs more than mqtt.c's default of 4. Each slot is ~16 bytes,
+ * statically inside mqtt_client_t (allocated once). */
+#define MQTT_REQ_MAX_IN_FLIGHT      8
+
 #define LWIP_ARP                    1
 #define LWIP_ETHERNET               1
 #define LWIP_ICMP                   1

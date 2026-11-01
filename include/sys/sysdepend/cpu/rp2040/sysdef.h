@@ -250,6 +250,15 @@
 
 #define	XOSC_STATUS_STABLE      (0x80000000)
 
+/* Watchdog tick generator (WATCHDOG_BASE 0x40058000, TICK at +0x2C).
+   It divides clk_ref into the 1 us tick that drives the TIMER block
+   (TIMERAWL/H, time_us_64() in the radio driver).  CYCLES (bits 8:0) must
+   equal the clk_ref frequency in MHz; startup_clock() sets it.  The Pico
+   SDK does the same in clocks_init() (watchdog_start_tick). */
+#define WDOG_TICK		(0x40058000+0x2C)
+#define WDOG_TICK_ENABLE	(1<<9)
+#define WDOG_TICK_RUNNING	(1<<10)
+
 /* PLL */
 #define PLL_SYS_BASE            (0x40028000)
 #define PLL_USB_BASE            (0x4002C000)

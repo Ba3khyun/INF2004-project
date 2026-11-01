@@ -107,6 +107,9 @@ EXPORT INT usermain(void)
 	tm_printf((UB*)"single-core build\n");
 #endif
 
+	/* Phase 0: shared cross-subsystem objects (app_shared.c, interim) */
+	CHECK(app_shared_init(), "app_shared_init");
+
 	/* Phase 1: every subsystem creates its kernel objects */
 	CHECK(subsystem1_init(), "subsystem1_init");
 	CHECK(subsystem2_init(), "subsystem2_init");

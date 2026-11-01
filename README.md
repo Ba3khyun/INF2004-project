@@ -249,7 +249,9 @@ Each option goes through the same steps:
 
 The makefile also has `NET=lwip` and `MQTT=1` (TCP/IP and MQTT over WiFi).
 They need the SDK's `lib/lwip` submodule and a `config/wifi_secrets.h`
-(copy `config/wifi_secrets.example.h`). This guide does not cover them.
+(copy `config/wifi_secrets.example.h`). This guide does not cover them; the
+IS-06 Wi-Fi telemetry built on them (`make NET=lwip MQTT=1 -j8`) is described
+in `docs/buddy1_wifi_telemetry.md`.
 
 ---
 

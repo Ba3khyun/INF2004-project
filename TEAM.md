@@ -17,7 +17,7 @@ subsystem, ask its owner or open a pull request for them to review.
 
 | # | Subsystem (what it does) | Student ID | GitHub username | Code | Tests |
 |---|---|---|---|---|---|
-| 1 | *example:* LED heartbeat on GP19 | | | `app_program/subsystem1/` | `testing/subsystem1/` |
+| 1 | Wi-Fi Communication, Command and Telemetry (Buddy 1, Lai Jia Bao) — design: `docs/buddy1_wifi_telemetry.md`. Still hosts the *example* LED on GP19 until the S4 example is removed | 2500915 | | `app_program/subsystem1/` | `testing/subsystem1/` |
 | 2 | *example:* Producer: makes a sample every 300 ms | | | `app_program/subsystem2/` | `testing/subsystem2/` |
 | 3 | *example:* Consumer: collects samples into statistics | | | `app_program/subsystem3/` | `testing/subsystem3/` |
 | 4 | *example:* Monitor: prints reports, pauses the LED | | | `app_program/subsystem4/` | `testing/subsystem4/` |
@@ -112,7 +112,7 @@ the drivers have no locking to stop it.
 | SPI1 | | | |
 | ADC | | | GP26–GP28 |
 | PWM slices (list) | | | |
-| WiFi radio, TCP/IP, MQTT | *kernel* | `cyw43_utk_task` (built in) | GP23–25, GP29 |
+| WiFi radio, TCP/IP, MQTT | S1 (Buddy 1) | `cyw43_utk_task` (built in) = the Wi-Fi Telemetry Task, priority 40; Buddy 1's code runs inside it via `wifi_app_poll()` | GP23–25, GP29 |
 
 ### WiFi and MQTT are special
 
@@ -131,22 +131,36 @@ What students *can* do:
   ```
 - **Send or receive data over the network** by adding code that *runs
   inside the service task*. The MQTT client is in
-  `lib/liblwip/sysdepend/pico_rp2040/mqtt_utk.c`. It publishes a heartbeat
-  today. A "cloud / reporting" subsystem would add a kernel object
+  `lib/liblwip/sysdepend/pico_rp2040/mqtt_utk.c`. (The template's heartbeat
+  demo has been replaced by IS-06's publish/subscribe API, see below.) A "cloud / reporting" subsystem would add a kernel object
   (e.g. a message buffer) that application tasks fill. The MQTT code then
   reads it with `TMO_POL` (never blocking) and publishes it.
   Because this changes shared library code, **agree it with the team and
   the instructor first**, and record it as an interface in section 5.
   It needs the `NET=lwip MQTT=1` build (README section 3).
 
+**IS-06 implementation (Buddy 1, pending team/instructor sign-off).** The
+service task now runs at priority 40 (was 4) and, with `MQTT=1`, calls
+`wifi_app_poll()` (`app_program/subsystem1/wifi_telemetry.c`) on every poll
+iteration. That function runs the Wi-Fi/MQTT state machine, drains
+`telemetry_q` with `TMO_POL` and publishes binary frames — still inside the
+one task that owns the stack. Other tasks only call `telemetry_post()`.
+`CNF_MAX_TSKPRI` was raised to 48 to make priority 40 legal. Details and the
+reasons: `docs/buddy1_wifi_telemetry.md` section 0.
+
 ## 4. Task priorities
 
-1 is the highest. 1–4 are used by the kernel (USB console 3, WiFi 4). Each subsystem gets its own band by default;
+1 is the highest. 1–3 are used by the kernel (USB console 3). The kernel's
+WiFi service task is the Wi-Fi Telemetry Task at 40. Each subsystem gets its own band by default;
 change it only by team agreement. Write down every task you create.
+
+IS-06 task table (Design Review §3, `app.h` `PRI_*`): Safety 5, Motion Control 10,
+Vehicle Controller 12, Line Following 15, IMU 18, Obstacle Scanning 20,
+Barcode Decoding 22, Wi-Fi Telemetry 40. `CNF_MAX_TSKPRI` = 48.
 
 | Subsystem | Priority band | Tasks (name – priority – core) |
 |---|---|---|
-| 1 | 12–13 | *example:* led_task – 12 – any |
+| 1 | 40 (+ example 12) | Wi-Fi Telemetry = `cyw43_utk_task` – 40 – core 0 (`MQTT=1` builds); `wifi_task` – 40 – core 0 (builds without `MQTT=1`); *example:* led_task – 12 – any |
 | 2 | 14–15 | *example:* producer_task – 14 – core 1 |
 | 3 | 16–17 | *example:* consumer_task – 16 – core 0 |
 | 4 | 18–19 | *example:* monitor_task – 18 – any |
@@ -167,6 +181,11 @@ sends to it or waits on it. Agree on the data format before coding.
 | IF-03 | S3 → S4 | message buffer + event flag (owned by S4) | `mbf_summary`, `flg_events` | text line ≤ `S4_SUMMARY_MAX` bytes, then `FLG_BATCH` | *example* |
 | IF-04 | S4 → S3 | shared data under a mutex (owned by S3) | `app_stats`, `mtx_stats` | `APP_STATS`, read only while locked | *example* |
 | IF-05 | S4 → S1 | task control | `tid_led` | `tk_sus_tsk` / `tk_rsm_tsk` / `tk_chg_pri` | *example* |
+| IF-B1-01 | VC, Motion, IMU, Obstacle → S1 | message buffer (owned by S1) | `telemetry_q`, `telemetry_post()` | 4-byte `TQ_*` status message in `app_data.h`, drop-oldest, never blocks | proposed by B1 |
+| IF-B1-02 | S1 → Vehicle Controller | message buffer (owner VC; interim `app_shared.c`) | `remote_cmd_q` | 2-byte `RCMD_*` request (abort/pause/resume + seq) | proposed by B1 |
+| IF-B1-03 | S1 → Safety | event flag (owner Safety; interim `app_shared.c`) | `flg_safety` | `SAFETY_REQ_REMOTE_ABORT`; Safety clears it | proposed by B1 |
+| IF-B1-04 | Safety → S1 | event flag (read only) | `flg_safety` | `SAFETY_ESTOP_LATCHED`, set/cleared by Safety only | proposed by B1 |
+| IF-B1-05 | all → all | event flag (owner Safety; interim `app_shared.c`) | `flg_fault` | `FLT_*` bits, one owner per bit, `tk_set_flg`/`tk_clr_flg` only | proposed by B1 |
 | IF-06 | | | | | |
 
 Each interface is tested by at least one integration test
@@ -179,12 +198,12 @@ limit there. The numbers below are the example's usage.
 
 | Object | Limit | S1 | S2 | S3 | S4 | S5 |
 |---|---|---|---|---|---|---|
-| Task | 32 | 1 | 1 | 1 | 1 | |
+| Task | 32 | 1 (+1 `wifi_task` without `MQTT=1`; +1 test task in `TEST=1`) | 1 | 1 | 1 | |
 | Semaphore | 16 | | 1 | | | |
-| Event flag | 16 | | | | 1 | |
+| Event flag | 16 | (2 interim: `flg_safety`, `flg_fault`) | | | 1 | |
 | Mailbox | 12 | | | 1 | | |
 | Mutex | 12 | | | 1 | | |
-| Message buffer | 12 | | | | 1 | |
+| Message buffer | 12 | 1 `telemetry_q` (+1 interim `remote_cmd_q`; +1 temporary in `TEST=1`) | | | 1 | |
 | Fixed memory pool | 12 | | 1 | | | |
 | Variable memory pool | 12 | | | | | |
 | Cyclic handler | 12 | 1 | | | | |

@@ -1,0 +1,168 @@
+# COM4 capture start 2026-10-30T22:02:34.2959437+08:00
+
+
+microT-Kernel Version 3.00
+
+
+=== micro T-Kernel on Raspberry Pi Pico W (spec 0x6300, product 0x0003) ===
+dual-core (SMP) build, usermain on core 0
+motion: Buddy 2 Motion Control ready (motion_cmd_q)
+all subsystems started
+
+motion:   F = forward, L = left, R = right, X = stop, C = clear stop
+[TEST] === test run start ===
+monitor: I am task 8
+[TEST] S1-U01 PASS  cyclic handler is running
+wifi: cyw43_utk_task starting (proc 1)
+wifi: cyw43_init() ...
+wifi: cyw43_init() returned, bringing interface up ...
+[TEST] S1-U02 PASS  LED task sleeps between ticks
+[TEST] S1-U04 FAIL  telemetry_q: 4-byte messages, 128-byte buffer (16 deep), empty   (../app_program/subsystem1/subsystem1_test.c:199)
+monitor: batch  n=5 last=40 from core 1
+monitor: t=3355771096 ms  samples=5  min=0 max=40 avg=20  free slots=4  free blocks=4
+wifi: Wi-Fi Telemetry Task id=3 pri=40 topics robot/is06/state / robot/is06/cmd
+wifi: t=1330 DISCONNECTED -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+        wifi task id=3 pri=40 state=CONNECTING_WIFI
+[TEST] S1-U05 PASS  Wi-Fi Telemetry Task runs at priority 40
+wifi: link status -> joined AP, waiting for IP (1)
+wifi: link status -> FAILED: SSID not found (out of range, wrong name, or 5GHz-only network -- this chip is 2.4GHz only) (-2)
+wifi: t=2330 CONNECTING_WIFI -> RECONNECTING
+[TEST] S1-U06 FAIL  Wi-Fi task sleeps between polls (no busy loop)   (../app_program/subsystem1/subsystem1_test.c:220)
+[TEST] S1-U07 PASS  telemetry golden frame identical to the PC encoder
+[TEST] S1-U08 PASS  command frame abort/7 = 05 07 54, CRC-8 check 0xF4
+[TEST] S1-U09 PASS  20 posts into 16 slots: oldest 4 dropped, newest 16 kept in order, never blocks
+[TEST] S1-U10 PASS  telemetry_post rejects invalid fields and out-of-range values
+monitor: batch  n=10 last=90 from core 1
+monitor: t=3355772646 ms  samples=10  min=0 max=90 avg=45  free slots=4  free blocks=4
+wifi: t=2830 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+wifi: link status -> joined AP, waiting for IP (1)
+        telemetry_q residency: last=10 max=1230 ms (>50 ms: 19), 17 msgs dequeued (11 ours + motion speed)
+[TEST] S1-U11 FAIL  telemetry_q residency <= 50 ms with motion_task also producing   (../app_program/subsystem1/subsystem1_test.c:311)
+        test-sm: cmd type=1 seq=1 -> ACCEPT
+[TEST] S1-U12 PASS  abort -> flg_safety REMOTE_ABORT + remote_cmd_q, back to SHARE_TELEMETRY
+        test-sm: cmd type=1 seq=1 -> DUPLICATE
+[TEST] S1-U13 PASS  duplicate abort: nothing posted, no flag
+        test-sm: cmd type=0 seq=0 -> BAD_LENGTH
+[TEST] S1-U14 PASS  malformed (2-byte) payload: nothing posted
+        test-sm: cmd type=0 seq=0 -> UNKNOWN
+[TEST] S1-U15 PASS  unknown command (type 0, valid CRC): nothing posted
+        test-sm: cmd type=2 seq=2 -> ACCEPT
+[TEST] S1-U16 PASS  pause -> remote_cmd_q only
+        test-sm: cmd type=3 seq=3 -> ESTOP_LATCHED
+[TEST] S1-U17 PASS  resume while ESTOP latched: nothing posted
+        test-sm: cmd type=3 seq=3 -> ACCEPT
+[TEST] S1-U18 PASS  resume after the local ESTOP reset -> remote_cmd_q
+        test-sm: cmd type=3 seq=1 -> STALE
+[TEST] S1-U19 PASS  resume with an old sequence number: nothing posted
+        live backlog max=16 dropped=0 frames built=16 published=0
+[TEST] S1-U20 PASS  outbound backlog never exceeds 16 frames
+wifi: t=3290 backlog full, dropped oldest (total 1)
+        fault-bit stress: errors main=0 helper=0
+[TEST] S1-U21 PASS  two tasks toggling different fault bits 5000x: no bit lost
+[TEST] S1-U22 PASS  flg_fault holds only defined bits; B1 never stores ESTOP there
+wifi: link status -> FAILED: SSID not found (out of range, wrong name, or 5GHz-only network -- this chip is 2.4GHz only) (-2)
+wifi: t=3830 CONNECTING_WIFI -> RECONNECTING
+monitor: batch  n=15 last=60 from core 1
+monitor: t=3355774196 ms  samples=15  min=0 max=100 avg=56  free slots=4  free blocks=4
+wifi: t=4830 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+wifi: link status -> joined AP, waiting for IP (1)
+wifi: link status -> FAILED: SSID not found (out of range, wrong name, or 5GHz-only network -- this chip is 2.4GHz only) (-2)
+wifi: t=5830 CONNECTING_WIFI -> RECONNECTING
+monitor: batch  n=20 last=10 from core 1
+monitor: t=3355775746 ms  samples=20  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: batch  n=25 last=40 from core 1
+monitor: t=3355777296 ms  samples=25  min=0 max=100 avg=44  free slots=4  free blocks=4
+wifi: t=7830 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+wifi: link status -> joined AP, waiting for IP (1)
+wifi: link status -> FAILED: SSID not found (out of range, wrong name, or 5GHz-only network -- this chip is 2.4GHz only) (-2)
+wifi: t=8830 CONNECTING_WIFI -> RECONNECTING
+monitor: batch  n=30 last=90 from core 1
+monitor: t=3355778846 ms  samples=30  min=0 max=100 avg=48  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+wifi: stats t=10010 st=RECONNECTING pub=0 built=80 bl=16/16(max 16) bl_drop=64 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=110 bad=0 delay_last=10 max=1230 >50ms=23 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+monitor: batch  n=35 last=60 from core 1
+monitor: t=3355780396 ms  samples=35  min=0 max=100 avg=52  free slots=4  free blocks=4
+monitor: batch  n=40 last=10 from core 1
+monitor: t=3355781946 ms  samples=40  min=0 max=100 avg=50  free slots=4  free blocks=4
+wifi: t=12830 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+wifi: link status -> joined AP, waiting for IP (1)
+        jitter probe core0 pri15: 1000 cycles, period min=8991 max=10997 us, jitter=1009 us, missed=0; Wi-Fi during probe: state=CONNECTING_WIFI, reconnect attempts +3, frames built +95
+[TEST] S1-U23 PASS  10 ms loop on the Wi-Fi core: jitter <= 5 ms, no missed cycle (10 s)
+        radio: init=0 ready=1 link_status=1 ip=0.0.0.0 polls=547
+        wifi sm: state=CONNECTING_WIFI attempts=5 link_downs=0 published=0 built=113 backlog=16/16 dropped=97 det_max=0 ms rec_max=0 ms
+[TEST] S1-U24 PASS  radio up, state machine running, 10 Hz frames built, backlog bounded
+[TEST] subsystem1 SUMMARY 20 passed, 3 failed
+[TEST] S2-U01 PASS  sample values stay within 0..100
+[TEST] S2-U02 PASS  free slots and free blocks within pool size
+motion: no emergency stop to clear.
+[TEST] S2-U03 PASS  motion_cmd_q: 1-byte commands, 4 deep, empty
+monitor: batch  n=45 last=40 from core 1
+monitor: t=3355783496 ms  samples=45  min=0 max=100 avg=46  free slots=4  free blocks=4
+wifi: link status -> FAILED: SSID not found (out of range, wrong name, or 5GHz-only network -- this chip is 2.4GHz only) (-2)
+wifi: t=13810 backlog full, dropped oldest (total 100)
+wifi: t=13830 CONNECTING_WIFI -> RECONNECTING
+        motion_task id=5 pri=10, waiting 1/20 samples
+[TEST] S2-U04 FAIL  motion_task runs at priority 10 and sleeps between ticks   (../app_program/subsystem2/subsystem2_test.c:130)
+[TEST] S2-U05 PASS  motion_cmd_post rejects unknown command codes
+        PWM slice4 csr=1 div=10 top=6249, slice5 csr=1 div=10 top=6249
+[TEST] S2-U06 PASS  motor PWM: GP8-11 on slices 4/5, enabled, divider 1, 20 kHz
+[TEST] S2-U07 PASS  idle: all four motor outputs at 0 (brake) for 200 ms
+        encoders: L=0 R=0 pulses, PROC1_INTE0=88000000
+[TEST] S2-U08 PASS  encoders GP6/GP7: SIO input, pull-up, rising-edge IRQ on core 1
+motion: movement rejected: safety ESTOP latched.
+motion: movement rejected: safety ESTOP latched.
+motion: movement rejected: safety ESTOP latched.
+monitor: batch  n=50 last=90 from core 1
+monitor: t=3355785046 ms  samples=50  min=0 max=100 avg=49  free slots=4  free blocks=4
+[TEST] S2-U09 PASS  ESTOP latched: F/L/R refused, PWM stays 0, no FLT_MOTOR
+
+motion: EMERGENCY STOP: Stop command
+motion: motors stopped. Send C to clear.
+motion: movement rejected: emergency stop active.
+[TEST] S2-U10 PASS  local stop X: forward refused, PWM 0, X is not a fault
+
+motion: emergency stop cleared.
+motion: motion commands can be accepted again.
+[TEST] S2-U11 PASS  clear C: back to IDLE, motors still braked, FLT_MOTOR clear
+monitor: batch  n=55 last=60 from core 1
+monitor: t=3355786596 ms  samples=55  min=0 max=100 avg=51  free slots=4  free blocks=4
+wifi: t=17830 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+        speed reports dequeued by the Wi-Fi task in 2 s: 19, drops 0, queue delay max 1230 ms
+[TEST] S2-U12 PASS  motion_task posts TQ_FIELD_SPEED at 10 Hz, none dropped
+        S2-M01/M02 not built (S2_TEST_MOTORS=0): motors never driven
+[TEST] subsystem2 SUMMARY 11 passed, 1 failed
+wifi: link status -> joined AP, waiting for IP (1)
+monitor: batch  n=60 last=10 from core 1
+monitor: t=3355788146 ms  samples=60  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: LED task resumed, state=RUN, pri=12
+wifi: link status -> FAILED: SSID not found (out of range, wrong name, or 5GHz-only network -- this chip is 2.4GHz only) (-2)
+wifi: t=18830 CONNECTING_WIFI -> RECONNECTING
+monitor: batch  n=65 last=40 from core 1
+monitor: t=3355789696 ms  samples=65  min=0 max=100 avg=47  free slots=4  free blocks=4
+[TEST] INT-01 PASS  samples flow from subsystem 2 to subsystem 3
+wifi: stats t=20010 st=RECONNECTING pub=0 built=176 bl=16/16(max 16) bl_drop=160 busy=0 downs=0 det_max=0 rec_max=0
+[TEST] S3-U01 PASS  min <= max, both within 0..100
+wifi: queue rx=210 bad=0 delay_last=1 max=1230 >50ms=27 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+[TEST] subsystem3 SUMMARY 2 passed, 0 failed
+[TEST] S4-U01 PASS  message buffer max line = S4_SUMMARY_MAX
+monitor: batch  n=70 last=90 from core 1
+monitor: t=3355791246 ms  samples=70  min=0 max=100 avg=49  free slots=4  free blocks=4
+wifi: t=22830 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+monitor: batch  n=75 last=60 from core 1
+monitor: t=3355792796 ms  samples=75  min=0 max=100 avg=51  free slots=4  free blocks=4
+wifi: link status -> joined AP, waiting for IP (1)
+[TEST] INT-02 PASS  summary lines flow from subsystem 3 to subsystem 4
+[TEST] subsystem4 SUMMARY 2 passed, 0 failed
+[TEST] S5-U01 PASS  example: running in a task context
+[TEST] subsystem5 SUMMARY 1 passed, 0 failed
+[TEST] === test run end ===
+
+# capture end 2026-10-30T22:02:57.2178254+08:00, 10249 chars

@@ -25,4 +25,24 @@ int32_t cyw43_utk_start(void);
 void cyw43_utk_get_status(T_CYW43_UTK_STATUS *status);
 void cyw43_utk_task(int32_t stacd, void *exinf);
 
+/* ---------------------------------------------------------------------
+ * NET=lwip MQTT=1 only: application control of the association.
+ * Call ONLY from code running inside cyw43_utk_task (i.e. wifi_app_poll).
+ * --------------------------------------------------------------------- */
+#define CYW43_UTK_LINK_DOWN     0   /* not associated */
+#define CYW43_UTK_LINK_JOINING  1   /* associating / waiting for DHCP */
+#define CYW43_UTK_LINK_UP       2   /* associated with an IP address */
+#define CYW43_UTK_LINK_FAIL     3   /* join failed: no SSID, bad auth, ... */
+
+int32_t cyw43_utk_join(void);       /* request a join; 0 = request accepted */
+void    cyw43_utk_leave(void);      /* drop the association */
+int32_t cyw43_utk_link(void);       /* CYW43_UTK_LINK_* */
+
+/* Provided by the application (IS-06 Buddy 1, app_program/subsystem1/
+ * wifi_telemetry.c).  With MQTT=1, cyw43_utk_task calls it once per poll
+ * iteration, so all Wi-Fi/MQTT application logic runs in this one task --
+ * the only task allowed to touch the cyw43/lwIP/MQTT stack.  It must never
+ * block. */
+void    wifi_app_poll(void);
+
 #endif

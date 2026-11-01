@@ -1,0 +1,199 @@
+# motor run, image sha256 105afc01..., start 2026-11-01T15:26:53.5651179+08:00
+# COM4 opened 2026-11-01T15:26:54.6235646+08:00
+
+
+microT-Kernel Version 3.00
+
+
+=== micro T-Kernel on Raspberry Pi Pico W (spec 0x6300, product 0x0003) ===
+dual-core (SMP) build, usermain on core 0
+motion: Buddy 2 Motion Control ready (motion_cmd_q)
+all subsystems started
+
+motion:   F = forward, L = left, R = right, X = stop, C = clear stop
+[TEST] === test run start ===
+monitor: I am task 8
+[TEST] S1-U01 PASS  cyclic handler is running
+wifi: cyw43_utk_task starting (proc 1)
+wifi: cyw43_init() ...
+wifi: cyw43_init() returned, bringing interface up ...
+[TEST] S1-U02 PASS  LED task sleeps between ticks
+        telemetry_q free=40 of 128 bytes
+[TEST] S1-U04 PASS  telemetry_q: 4-byte messages, 128-byte buffer (16 deep)
+monitor: batch  n=5 last=40 from core 1
+monitor: t=3355771096 ms  samples=5  min=0 max=40 avg=20  free slots=4  free blocks=4
+wifi: Wi-Fi Telemetry Task id=3 pri=40 topics robot/is06/state / robot/is06/cmd
+wifi: t=1340 DISCONNECTED -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+        wifi task id=3 pri=40 state=CONNECTING_WIFI
+[TEST] S1-U05 PASS  Wi-Fi Telemetry Task runs at priority 40
+wifi: link status -> joined AP, waiting for IP (1)
+monitor: batch  n=10 last=90 from core 1
+monitor: t=3355772646 ms  samples=10  min=0 max=90 avg=45  free slots=4  free blocks=4
+wifi: t=3100 backlog full, dropped oldest (total 1)
+        Wi-Fi task: 93 polls in 2 s, longest gap 259410 us
+[TEST] S1-U06 PASS  Wi-Fi task sleeps between polls: 30..75 polls/s (no busy loop)
+[TEST] S1-U07 PASS  telemetry golden frame identical to the PC encoder
+[TEST] S1-U08 PASS  command frame abort/7 = 05 07 54, CRC-8 check 0xF4
+[TEST] S1-U09 PASS  20 posts into 16 slots: oldest 4 dropped, newest 16 kept in order, never blocks
+[TEST] S1-U10 PASS  telemetry_post rejects invalid fields and out-of-range values
+monitor: batch  n=15 last=60 from core 1
+monitor: t=3355774196 ms  samples=15  min=0 max=100 avg=56  free slots=4  free blocks=4
+wifi: link status -> joined AP, no IP yet (2)
+wifi: link up, ip=172.20.10.3
+wifi: t=4620 CONNECTING_WIFI -> CONNECTING_MQTT
+mqtt: connected to 172.20.10.2
+wifi: t=4820 CONNECTING_MQTT -> SHARE_TELEMETRY
+        telemetry_q window: 17 msgs dequeued (11 ours + motion speed), 0 over 50 ms, 0 poll gaps over 50 ms, connected=0, state=SHARE_TELEMETRY
+[TEST] S1-U11 NOT-RUN  needs SHARE_TELEMETRY (AP + broker); queue path ok=1
+        test-sm: cmd type=1 seq=1 -> ACCEPT
+[TEST] S1-U12 PASS  abort -> flg_safety REMOTE_ABORT + remote_cmd_q, back to SHARE_TELEMETRY
+        test-sm: cmd type=1 seq=1 -> DUPLICATE
+[TEST] S1-U13 PASS  duplicate abort: nothing posted, no flag
+        test-sm: cmd type=0 seq=0 -> BAD_LENGTH
+[TEST] S1-U14 PASS  malformed (2-byte) payload: nothing posted
+        test-sm: cmd type=0 seq=0 -> UNKNOWN
+[TEST] S1-U15 PASS  unknown command (type 0, valid CRC): nothing posted
+        test-sm: cmd type=2 seq=2 -> ACCEPT
+[TEST] S1-U16 PASS  pause -> remote_cmd_q only
+        test-sm: cmd type=3 seq=3 -> ESTOP_LATCHED
+[TEST] S1-U17 PASS  resume while ESTOP latched: nothing posted
+        test-sm: cmd type=3 seq=3 -> ACCEPT
+[TEST] S1-U18 PASS  resume after the local ESTOP reset -> remote_cmd_q
+        test-sm: cmd type=3 seq=1 -> STALE
+[TEST] S1-U19 PASS  resume with an old sequence number: nothing posted
+        live backlog max=16 dropped=18 frames built=41 published=23
+[TEST] S1-U20 PASS  outbound backlog never exceeds 16 frames
+        fault-bit stress: errors main=0 helper=0
+[TEST] S1-U21 PASS  two tasks toggling different fault bits 5000x: no bit lost
+[TEST] S1-U22 PASS  flg_fault holds only defined bits; B1 never stores ESTOP there
+monitor: batch  n=20 last=10 from core 1
+monitor: t=3355775746 ms  samples=20  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: batch  n=25 last=40 from core 1
+monitor: t=3355777296 ms  samples=25  min=0 max=100 avg=44  free slots=4  free blocks=4
+monitor: batch  n=30 last=90 from core 1
+monitor: t=3355778846 ms  samples=30  min=0 max=100 avg=48  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+wifi: stats t=10010 st=SHARE_TELEMETRY pub=68 built=86 bl=0/16(max 16) bl_drop=18 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=110 bad=0 delay_last=10 max=1240 >50ms=14 polls=418 gap_max=259410 us gaps>50ms=2 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+monitor: batch  n=35 last=60 from core 1
+monitor: t=3355780396 ms  samples=35  min=0 max=100 avg=52  free slots=4  free blocks=4
+monitor: batch  n=40 last=10 from core 1
+monitor: t=3355781946 ms  samples=40  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: batch  n=45 last=40 from core 1
+monitor: t=3355783496 ms  samples=45  min=0 max=100 avg=46  free slots=4  free blocks=4
+monitor: batch  n=50 last=90 from core 1
+monitor: t=3355785046 ms  samples=50  min=0 max=100 avg=49  free slots=4  free blocks=4
+wifi: t=15730 SHARE_TELEMETRY -> RECONNECTING
+wifi: t=15730 LINK_DOWN cause=0x4 1500 ms after last TCP ack
+        jitter probe core0 pri15: 1000 cycles, period min=8918 max=11197 us, jitter=1197 us, missed=0; Wi-Fi during probe: state=RECONNECTING, reconnect attempts +0, frames built +102
+[TEST] S1-U23 PASS  10 ms loop on the Wi-Fi core: jitter <= 5 ms, no missed cycle (10 s)
+        radio: init=0 ready=1 link_status=3 ip=172.20.10.3 polls=704
+        wifi sm: state=RECONNECTING attempts=1 link_downs=1 published=118 built=144 backlog=16/16 dropped=18 det_max=1500 ms rec_max=0 ms
+[TEST] S1-U24 PASS  radio up, state machine running, 10 Hz frames built, backlog bounded
+        WATCHDOG TICK=3e0c (expect 20c); tk_dly_tsk(100) = 107703 109923 109986 us on TIMER
+[TEST] S1-U25 PASS  TIMER runs at 1 MHz: tk_dly_tsk(100) = 100..125 ms on it, tick generator = 12 cycles
+[TEST] subsystem1 SUMMARY 23 passed, 0 failed
+[TEST] S2-U01 PASS  sample values stay within 0..100
+[TEST] S2-U02 PASS  free slots and free blocks within pool size
+motion: no emergency stop to clear.
+[TEST] S2-U03 PASS  motion_cmd_q: 1-byte commands, 4 deep, empty
+wifi: t=16230 RECONNECTING -> CONNECTING_WIFI
+wifi: t=16230 CONNECTING_WIFI -> CONNECTING_MQTT
+mqtt: connected to 172.20.10.2
+wifi: t=16410 CONNECTING_MQTT -> SHARE_TELEMETRY
+wifi: t=16410 RECOVERED first publish 680 ms after link loss
+        motion_task id=5 pri=10, 3 ms after a tick: waiting 20, running/ready 0 of 20
+[TEST] S2-U04 PASS  motion_task runs at priority 10 and sleeps between ticks
+[TEST] S2-U05 PASS  motion_cmd_post rejects unknown command codes
+        PWM slice4 csr=1 div=10 top=6249, slice5 csr=1 div=10 top=6249
+[TEST] S2-U06 PASS  motor PWM: GP8-11 on slices 4/5, enabled, divider 1, 20 kHz
+monitor: batch  n=55 last=60 from core 1
+monitor: t=3355786596 ms  samples=55  min=0 max=100 avg=51  free slots=4  free blocks=4
+[TEST] S2-U07 PASS  idle: all four motor outputs at 0 (brake) for 200 ms
+        encoders: L=0 R=0 pulses, PROC1_INTE0=88000000
+[TEST] S2-U08 PASS  encoders GP6/GP7: SIO input, pull-up, rising-edge IRQ on core 1
+motion: movement rejected: safety ESTOP latched.
+motion: movement rejected: safety ESTOP latched.
+motion: movement rejected: safety ESTOP latched.
+[TEST] S2-U09 PASS  ESTOP latched: F/L/R refused, PWM stays 0, no FLT_MOTOR
+
+motion: EMERGENCY STOP: Stop command
+motion: motors stopped. Send C to clear.
+motion: movement rejected: emergency stop active.
+[TEST] S2-U10 PASS  local stop X: forward refused, PWM 0, X is not a fault
+
+motion: emergency stop cleared.
+motion: motion commands can be accepted again.
+monitor: batch  n=60 last=10 from core 1
+monitor: t=3355788146 ms  samples=60  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: LED task resumed, state=RUN, pri=12
+[TEST] S2-U11 PASS  clear C: back to IDLE, motors still braked, FLT_MOTOR clear
+        kernel: tk_dly_tsk(10) lasts avg 19963 us, max 20057 us
+monitor: batch  n=65 last=40 from core 1
+monitor: t=3355789696 ms  samples=65  min=0 max=100 avg=47  free slots=4  free blocks=4
+wifi: t=20010 SHARE_TELEMETRY -> RECONNECTING
+wifi: t=20010 LINK_DOWN cause=0x4 1500 ms after last TCP ack
+wifi: stats t=20010 st=RECONNECTING pub=161 built=187 bl=8/16(max 16) bl_drop=18 busy=14 downs=2 det_max=1500 rec_max=680
+wifi: queue rx=210 bad=0 delay_last=10 max=1240 >50ms=14 polls=918 gap_max=259410 us gaps>50ms=2 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+wifi: t=20510 RECONNECTING -> CONNECTING_WIFI
+wifi: t=20510 CONNECTING_WIFI -> CONNECTING_MQTT
+mqtt: connected to 172.20.10.2
+wifi: t=20610 CONNECTING_MQTT -> SHARE_TELEMETRY
+wifi: t=20610 RECOVERED first publish 600 ms after link loss
+        motion_task: 200 ticks in 2009716 us (99 per s), missed 0
+[TEST] S2-U13 PASS  motion_task control tick runs at 100 Hz, no missed tick
+        motion ticks during a 100 ms sleep on core 0: 11 (expect ~10), missed 0
+[TEST] S2-M03 PASS  motion_task keeps ticking (>= 8 of 10) while a priority-1 task spins on core 0
+monitor: batch  n=70 last=90 from core 1
+monitor: t=3355791246 ms  samples=70  min=0 max=100 avg=49  free slots=4  free blocks=4
+        speed reports dequeued by the Wi-Fi task in 2 s: 20, drops 0, queue delay max 1240 ms
+[TEST] S2-U12 PASS  motion_task posts TQ_FIELD_SPEED at 10 Hz, none dropped
+        S2-M: motors will turn at 20 % PWM
+
+motion: starting FORWARD movement...
+monitor: batch  n=75 last=60 from core 1
+monitor: t=3355792796 ms  samples=75  min=0 max=100 avg=51  free slots=4  free blocks=4
+
+motion: movement completed.
+motion: left  revolutions: 517/1000
+motion: right revolutions: 500/1000
+motion: motors stopped.
+        forward: cc while moving=4e204e2, stopped after ~310 ms, pulses L=323 R=316, FLT_MOTOR=0
+[TEST] S2-M01 PASS  forward 0.5 rev: PWM on, both encoders count, stops by itself
+motion: no emergency stop to clear.
+
+motion: starting FORWARD movement...
+
+motion: aborted, safety ESTOP latched.
+        ESTOP -> PWM 0: 19987 us (cc before=4e204e2, sleeping observer), motion ticks meanwhile 2, missed 0
+[TEST] S2-M02 PASS  ESTOP latched during a move: PWM 0 within 50 ms (observer resolution ~20 ms) and stays 0
+motion: no emergency stop to clear.
+[TEST] subsystem2 SUMMARY 16 passed, 0 failed
+monitor: batch  n=80 last=10 from core 1
+monitor: t=3355794346 ms  samples=80  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: batch  n=85 last=40 from core 1
+monitor: t=3355795896 ms  samples=85  min=0 max=100 avg=48  free slots=4  free blocks=4
+[TEST] INT-01 PASS  samples flow from subsystem 2 to subsystem 3
+[TEST] S3-U01 PASS  min <= max, both within 0..100
+[TEST] subsystem3 SUMMARY 2 passed, 0 failed
+[TEST] S4-U01 PASS  message buffer max line = S4_SUMMARY_MAX
+wifi: t=26210 SHARE_TELEMETRY -> RECONNECTING
+wifi: t=26210 LINK_DOWN cause=0x4 1500 ms after last TCP ack
+wifi: t=26710 RECONNECTING -> CONNECTING_WIFI
+wifi: t=26710 CONNECTING_WIFI -> CONNECTING_MQTT
+mqtt: connected to 172.20.10.2
+wifi: t=26790 CONNECTING_MQTT -> SHARE_TELEMETRY
+wifi: t=26790 RECOVERED first publish 580 ms after link loss
+monitor: batch  n=90 last=90 from core 1
+monitor: t=3355797446 ms  samples=90  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+monitor: batch  n=95 last=60 from core 1
+monitor: t=3355798996 ms  samples=95  min=0 max=100 avg=51  free slots=4  free blocks=4
+[TEST] INT-02 PASS  summary lines flow from subsystem 3 to subsystem 4
+[TEST] subsystem4 SUMMARY 2 passed, 0 failed
+[TEST] S5-U01 PASS  example: running in a task context
+[TEST] subsystem5 SUMMARY 1 passed, 0 failed
+[TEST] === test run end ===
+
+# capture end 2026-11-01T15:27:23.9319066+08:00

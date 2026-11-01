@@ -34,6 +34,14 @@
 #define USE_FAST_LOCK		(1)
 #define USE_MULTI_LOCK		(1)
 
+/* T-Kernel standard library bit operations (kernel/tstdlib/bitop.c).
+   Required by the ready queue once CNF_MAX_TSKPRI > 32, which IS-06 needs
+   for the Wi-Fi Telemetry Task at priority 40 (kernel/tkernel/ready_queue.h
+   switches to a multi-word priority bitmap). */
+#define USE_FUNC_TSTDLIB_BITCLR
+#define USE_FUNC_TSTDLIB_BITSET
+#define USE_FUNC_TSTDLIB_BITSEARCH1
+
 /* Task management */
 #define USE_FUNC_TK_DEL_TSK
 #define USE_FUNC_TK_EXT_TSK

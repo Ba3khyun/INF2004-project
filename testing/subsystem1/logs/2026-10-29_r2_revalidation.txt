@@ -1,0 +1,48 @@
+# Buddy 1 re-validation run 2 -- 2026-10-29
+# base commit: 2eb0a68 + uncommitted working tree
+# Changes under test: C13 liveness fix (wifi_sm.c progress_age), new host test S1-H52.
+# Tool: Kiro (AI assistant), WSL Ubuntu 24.04.
+#
+# HOW THIS LOG WAS MADE: the lines below were copied from the console of the
+# background processes that ran the commands (the shell could not redirect
+# WSL output to a file in this session). Only lines that were displayed are
+# reproduced; the full per-test listing was not captured for run 2.
+
+## 1. Regression proof: S1-H52 against the OLD wifi_sm.c (before the fix)
+$ wsl bash testing/subsystem1/host/run_host_tests.sh | Select-String "FAIL|H52|SUMMARY|analysis"
+[TEST] S1-H52 FAIL  progress stamped after 'now' (tick between samples): no false SOCK_TIMEOUT   (testing/subsystem1/host/test_wifi_host.c:734)
+[TEST] subsystem1-host SUMMARY 48 passed, 1 failed
+static analysis (gcc -fanalyzer -Werror): clean
+(reproduced twice, two separate runs)
+
+## 2. Host unit tests AFTER the fix
+$ wsl bash testing/subsystem1/host/run_host_tests.sh | Select-String "FAIL|H41|H52|SUMMARY|analysis|error|worst"
+        worst simulated detection: 1600 ms (poll 10 ms)
+[TEST] S1-H41 PASS  silent TCP loss detected <= 2 s in 10/10 trials
+[TEST] S1-H52 PASS  progress stamped after 'now' (tick between samples): no false SOCK_TIMEOUT
+[TEST] subsystem1-host SUMMARY 49 passed, 0 failed
+static analysis (gcc -fanalyzer -Werror): clean
+(no FAIL line was printed)
+
+## 3. Firmware build matrix AFTER the fix (PICO_SDK_PATH=$HOME/pico/pico-sdk)
+# toolchain: arm-none-eabi-gcc (15:13.2.rel1-2) 13.2.1 20231009
+make NET=lwip MQTT=1 -> exit=0 warnings=0 error-lines=0
+ 344524	     96	  82696	 427316	  68534	mtk3pico_smp1_usb_cdc_wifi_lwip_mqtt.elf
+make NET=lwip MQTT=1 TEST=1 -> exit=0 warnings=0 error-lines=0
+ 352260	     96	  83044	 435400	  6a4c8	mtk3pico_smp1_usb_cdc_wifi_lwip_mqtt_test.elf
+make SMP=0 NET=lwip MQTT=1 -> exit=0 warnings=0 error-lines=0
+ 336288	     84	  78564	 414936	  654d8	mtk3pico_smp0_usb_cdc_wifi_lwip_mqtt.elf
+make TEST=1 -> exit=0 warnings=0 error-lines=0
+ 298240	     88	  25388	 323716	  4f084	mtk3pico_smp1_usb_cdc_wifi_test.elf
+make  -> exit=0 warnings=0 error-lines=0
+ 290400	     88	  25040	 315528	  4d088	mtk3pico_smp1_usb_cdc_wifi.elf
+make CONSOLE=uart WIFI=none -> compiled every file and reached the link step
+ (build log /tmp/s1_build_CONSOLE_uart_WIFI_none.log); exit code and size
+ line NOT captured -- treat this profile as unverified for run 2.
+
+## 4. Not re-run in run 2
+tools/wifi_telemetry_tool.py selftest  -- started, no output captured: NOT VERIFIED in run 2
+                                          (last recorded PASS: logs/2026-10-29_host_unit.txt)
+arm-none-eabi-nm static RAM           -- not re-measured (wifi_sm.c change adds no data)
+
+# Nothing in this log was flashed or run on a Pico W.
