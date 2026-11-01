@@ -1,0 +1,4 @@
+﻿make: Entering directory '/mnt/c/Users/jason/Desktop/Embedded Systems/Project_Code/build_make'
+make: Nothing to be done for 'all'.
+make: Leaving directory '/mnt/c/Users/jason/Desktop/Embedded Systems/Project_Code/build_make'
+exit=0

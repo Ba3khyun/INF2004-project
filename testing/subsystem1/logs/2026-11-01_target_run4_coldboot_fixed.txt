@@ -1,0 +1,146 @@
+# start 2026-11-01T13:55:16.7707008+08:00; ports: COM4
+
+
+microT-Kernel Version 3.00
+
+
+=== micro T-Kernel on Raspberry Pi Pico W (spec 0x6300, product 0x0003) ===
+dual-core (SMP) build, usermain on core 0
+motion: Buddy 2 Motion Control ready (motion_cmd_q)
+all subsystems started
+
+motion:   F = forward, L = left, R = right, X = stop, C = clear stop
+[TEST] === test run start ===
+monitor: I am task 8
+[TEST] S1-U01 PASS  cyclic handler is running
+wifi: cyw43_utk_task starting (proc 1)
+wifi: cyw43_init() ...
+wifi: cyw43_init() returned, bringing interface up ...
+[TEST] S1-U02 PASS  LED task sleeps between ticks
+        telemetry_q free=40 of 128 bytes
+[TEST] S1-U04 PASS  telemetry_q: 4-byte messages, 128-byte buffer (16 deep)
+monitor: batch  n=5 last=40 from core 1
+monitor: t=3355771096 ms  samples=5  min=0 max=40 avg=20  free slots=4  free blocks=4
+wifi: Wi-Fi Telemetry Task id=3 pri=40 topics robot/is06/state / robot/is06/cmd
+wifi: t=1340 DISCONNECTED -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+        wifi task id=3 pri=40 state=CONNECTING_WIFI
+[TEST] S1-U05 PASS  Wi-Fi Telemetry Task runs at priority 40
+wifi: link status -> joined AP, waiting for IP (1)
+wifi: link status -> FAILED: SSID not found (out of range, wrong name, or 5GHz-only network -- this chip is 2.4GHz only) (-2)
+wifi: t=2340 CONNECTING_WIFI -> RECONNECTING
+monitor: batch  n=10 last=90 from core 1
+monitor: t=3355772646 ms  samples=10  min=0 max=90 avg=45  free slots=4  free blocks=4
+wifi: t=2840 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+wifi: link status -> joined AP, waiting for IP (1)
+wifi: t=3300 backlog full, dropped oldest (total 1)
+        Wi-Fi task: 79 polls in 2 s, longest gap 260664 us
+[TEST] S1-U06 PASS  Wi-Fi task sleeps between polls: 30..75 polls/s (no busy loop)
+[TEST] S1-U07 PASS  telemetry golden frame identical to the PC encoder
+[TEST] S1-U08 PASS  command frame abort/7 = 05 07 54, CRC-8 check 0xF4
+[TEST] S1-U09 PASS  20 posts into 16 slots: oldest 4 dropped, newest 16 kept in order, never blocks
+[TEST] S1-U10 PASS  telemetry_post rejects invalid fields and out-of-range values
+monitor: batch  n=15 last=60 from core 1
+monitor: t=3355774196 ms  samples=15  min=0 max=100 avg=56  free slots=4  free blocks=4
+monitor: batch  n=20 last=10 from core 1
+monitor: t=3355775746 ms  samples=20  min=0 max=100 avg=50  free slots=4  free blocks=4
+wifi: link status -> joined AP, no IP yet (2)
+wifi: link up, ip=172.20.10.3
+wifi: t=6320 CONNECTING_WIFI -> CONNECTING_MQTT
+monitor: batch  n=25 last=40 from core 1
+monitor: t=3355777296 ms  samples=25  min=0 max=100 avg=44  free slots=4  free blocks=4
+monitor: batch  n=30 last=90 from core 1
+monitor: t=3355778846 ms  samples=30  min=0 max=100 avg=48  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+wifi: stats t=10000 st=CONNECTING_MQTT pub=0 built=84 bl=16/16(max 16) bl_drop=68 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=100 bad=0 delay_last=0 max=1241 >50ms=16 polls=409 gap_max=260664 us gaps>50ms=2 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+monitor: batch  n=35 last=60 from core 1
+monitor: t=3355780396 ms  samples=35  min=0 max=100 avg=52  free slots=4  free blocks=4
+wifi: t=11320 CONNECTING_MQTT -> RECONNECTING
+monitor: batch  n=40 last=10 from core 1
+monitor: t=3355781946 ms  samples=40  min=0 max=100 avg=50  free slots=4  free blocks=4
+wifi: t=12320 RECONNECTING -> CONNECTING_WIFI
+wifi: t=12320 CONNECTING_WIFI -> CONNECTING_MQTT
+wifi: t=13200 backlog full, dropped oldest (total 100)
+monitor: batch  n=45 last=40 from core 1
+monitor: t=3355783496 ms  samples=45  min=0 max=100 avg=46  free slots=4  free blocks=4
+monitor: batch  n=50 last=90 from core 1
+monitor: t=3355785046 ms  samples=50  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: batch  n=55 last=60 from core 1
+monitor: t=3355786596 ms  samples=55  min=0 max=100 avg=51  free slots=4  free blocks=4
+wifi: t=17320 CONNECTING_MQTT -> RECONNECTING
+wifi: link status -> down (0)
+monitor: batch  n=60 last=10 from core 1
+monitor: t=3355788146 ms  samples=60  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: LED task resumed, state=RUN, pri=12
+wifi: t=19320 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+wifi: link status -> joined AP, waiting for IP (1)
+monitor: batch  n=65 last=40 from core 1
+monitor: t=3355789696 ms  samples=65  min=0 max=100 avg=47  fmonitor: batch  n=710 last=90 from core 1
+monitor: t=3355989646 ms  samples=710  min=0 max=100 avg=49  free slots=4  free blocks=4
+wifi: stats t=220000 st=CONNECTING_WIFI pub=0 built=2170 bl=16/16(max 16) bl_drop=2154 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=2210 bad=0 delay_last=10 max=1241 >50ms=28 polls=10818 gap_max=280606 us gaps>50ms=8 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+monitor: batch  n=715 last=60 from core 1
+monitor: t=3355991196 ms  samples=715  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: batch  n=720 last=10 from core 1
+monitor: t=3355992746 ms  samples=720  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: LED task resumed, state=RUN, pri=12
+monitor: batch  n=725 last=40 from core 1
+monitor: t=3355994296 ms  samples=725  min=0 max=100 avg=49  free slots=4  free blocks=4
+wifi: t=224540 backlog full, dropped oldest (total 2200)
+monitor: batch  n=730 last=90 from core 1
+monitor: t=3355995846 ms  samples=730  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: batch  n=735 last=60 from core 1
+monitor: t=3355997396 ms  samples=735  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: batch  n=740 last=10 from core 1
+monitor: t=3355998946 ms  samples=740  min=0 max=100 avg=50  free slots=4  free blocks=4
+wifi: stats t=230000 st=CONNECTING_WIFI pub=0 built=2270 bl=16/16(max 16) bl_drop=2254 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=2310 bad=0 delay_last=10 max=1241 >50ms=28 polls=11318 gap_max=280606 us gaps>50ms=8 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+monitor: batch  n=745 last=40 from core 1
+monitor: t=3356000496 ms  samples=745  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: batch  n=750 last=90 from core 1
+monitor: t=3356002046 ms  samples=750  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+monitor: batch  n=755 last=60 from core 1
+monitor: t=3356003596 ms  samples=755  min=0 max=100 avg=50  free slots=4  free blocks=4
+wifi: t=233800 CONNECTING_WIFI -> RECONNECTING
+wifi: t=234540 backlog full, dropped oldest (total 2300)
+monitor: batch  n=760 last=10 from core 1
+monitor: t=3356005146 ms  samples=760  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: batch  n=765 last=40 from core 1
+monitor: t=3356006696 ms  samples=765  min=0 max=100 avg=49  free slots=4  free blocks=4
+wifi: t=237800 RECONNECTING -> CONNECTING_WIFI
+monitor: batch  n=770 last=90 from core 1
+monitor: t=3356008246 ms  samples=770  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: batch  n=775 last=60 from core 1
+monitor: t=3356009796 ms  samples=775  min=0 max=100 avg=50  free slots=4  free blocks=4
+wifi: stats t=240000 st=CONNECTING_WIFI pub=0 built=2370 bl=16/16(max 16) bl_drop=2354 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=2410 bad=0 delay_last=10 max=1241 >50ms=28 polls=11817 gap_max=280606 us gaps>50ms=8 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+monitor: batch  n=780 last=10 from core 1
+monitor: t=3356011346 ms  samples=780  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: LED task resumed, state=RUN, pri=12
+monitor: batch  n=785 last=40 from core 1
+monitor: t=3356012896 ms  samples=785  min=0 max=100 avg=49  free slots=4  free blocks=4
+wifi: t=244540 backlog full, dropped oldest (total 2400)
+monitor: batch  n=790 last=90 from core 1
+monitor: t=3356014446 ms  samples=790  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: batch  n=795 last=60 from core 1
+monitor: t=3356015996 ms  samples=795  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: batch  n=800 last=10 from core 1
+monitor: t=3356017546 ms  samples=800  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: batch  n=805 last=40 from core 1
+monitor: t=3356019096 ms  samples=805  min=0 max=100 avg=49  free slots=4  free blocks=4
+wifi: stats t=250000 st=CONNECTING_WIFI pub=0 built=2470 bl=16/16(max 16) bl_drop=2454 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=2510 bad=0 delay_last=10 max=1241 >50ms=28 polls=12317 gap_max=280606 us gaps>50ms=8 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+monitor: batch  n=810 last=90 from core 1
+monitor: t=3356020646 ms  samples=810  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+monitor: batch  n=815 last=60 from core 1
+monitor: t=3356022196 ms  samples=815  min=0 max=100 avg=50  free slots=4  free blocks=4
+wifi: t=252800 CONNECTING_WIFI -> RECONNECTING
+monitor: batch  n=820 last=10 from core 1
+monitor: t=3356023746 ms  samples=820  min=0 max=100 avg=50  free slots=4  free blocks=4
+
+# end 2026-11-01T13:55:51.8065329+08:00
