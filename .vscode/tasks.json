@@ -1,0 +1,35 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "CMake: Configure Pico W",
+      "type": "shell",
+      "command": "cmake --preset pico-w",
+      "problemMatcher": []
+    },
+    {
+      "label": "CMake: Build Pico W",
+      "type": "shell",
+      "command": "cmake --build --preset pico-w",
+      "dependsOn": "CMake: Configure Pico W",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "CMake: Build Pico W (tests)",
+      "type": "shell",
+      "command": "cmake --build --preset pico-w-test",
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "Make: Build firmware",
+      "type": "shell",
+      "command": "make -C build_make -j8",
+      "group": "build",
+      "problemMatcher": ["$gcc"]
+    }
+  ]
+}

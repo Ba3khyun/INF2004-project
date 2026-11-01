@@ -105,6 +105,39 @@ If `make` stops with an error, it tells you which one is wrong:
 
 To build a single-core, UART-only or test version, see section 3.
 
+**2.2a Build with CMake instead (optional)**
+
+The same firmware can be built with CMake. `CMakeLists.txt` mirrors
+`build_make/pico_rp2040.mk`: same sources, defines, include paths, linker
+script and `.uf2` output. Use whichever you prefer; you do not need both.
+
+```sh
+cmake --preset pico-w          # configure (once, or after changing an option)
+cmake --build --preset pico-w  # compile and create the .uf2
+```
+
+The firmware is `build/mtk3pico_smp1_usb_cdc_wifi.uf2`.
+
+The presets are:
+
+| Preset | Same as `make ...` | Output folder |
+|---|---|---|
+| `pico-w` | `make` | `build/` |
+| `pico-w-test` | `make TEST=1` | `build-test/` |
+| `pico-w-single-core` | `make SMP=0` | `build-smp0/` |
+| `pico-w-uart` | `make CONSOLE=uart WIFI=none` | `build-uart/` |
+
+Any option from section 3 also works as a `-D` value, e.g.
+`cmake --preset pico-w -DCRASH_REPORT=1`. Options are remembered in the
+build folder, so after changing one just build again.
+
+`CMakePresets.json` points at the toolchain and SDK installed by the
+Raspberry Pi Pico VS Code extension. If yours are elsewhere, edit
+`PICO_SDK_PATH` and `PICO_TOOLCHAIN_PATH` in that file, or pass them:
+`cmake --preset pico-w -DPICO_SDK_PATH=/path/to/pico-sdk`.
+
+To build a single-core, UART-only or test version, see section 3.
+
 **2.3 Flash it onto the Pico W**
 
 1. Hold the **BOOTSEL** button and plug the Pico W into USB, then release.
@@ -252,6 +285,16 @@ They need the SDK's `lib/lwip` submodule and a `config/wifi_secrets.h`
 (copy `config/wifi_secrets.example.h`). This guide does not cover them; the
 IS-06 Wi-Fi telemetry built on them (`make NET=lwip MQTT=1 -j8`) is described
 in `docs/buddy1_wifi_telemetry.md`.
+
+### Keeping the CMake build in step
+
+If you add a source file under `kernel/`, `lib/`, `device/` or `etc/`, add it
+to the matching list in `CMakeLists.txt` as well as to the `subdir.mk` file.
+Files in `app_program/` are picked up automatically by both builds.
+
+If you add a build option to `build_make/pico_rp2040.mk`, add the same
+option to `CMakeLists.txt` (the `set(... CACHE STRING ...)` block near the
+top, then the matching `if()` that adds the define).
 
 ---
 
