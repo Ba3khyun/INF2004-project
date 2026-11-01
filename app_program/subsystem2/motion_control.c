@@ -1,5 +1,5 @@
 /*
- *	drv_motion.c
+ *	motion_control.c
  *	Subsystem 2 -- Motion Control (Buddy 2): motor, encoder and PID driver.
  *
  *	Ported from buddy2_motion_control/motion_control.c.  The behaviour is
@@ -23,7 +23,7 @@
  *	including CONSOLE=uart WIFI=none.
  */
 
-#include "drv_motion.h"
+#include "motion_control.h"
 
 /* ---------------------------------------------------------------------
  *  Pins and constants (unchanged from the original)

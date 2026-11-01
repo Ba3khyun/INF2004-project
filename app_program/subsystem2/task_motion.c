@@ -16,14 +16,14 @@
  *	  --                                SAFETY_ESTOP_LATCHED, FLT_MOTOR,
  *	                                    TQ_FIELD_SPEED (team interfaces)
  *
- *	This task is the ONLY caller of the drv_motion motor/encoder API.
+ *	This task is the ONLY caller of the motion_control motor/encoder API.
  *
  *	APIs shown: tk_rcv_mbf (with timeout), tk_ref_flg, tk_set_flg,
  *	            tk_clr_flg, tk_get_otm
  */
 
 #include "subsystem2.h"
-#include "drv_motion.h"
+#include "motion_control.h"
 #include "../subsystem1/subsystem1.h"	/* IF-B1-01: telemetry_post */
 
 /* ========================

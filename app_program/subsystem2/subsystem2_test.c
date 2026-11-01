@@ -16,7 +16,7 @@
  */
 
 #include "subsystem2.h"
-#include "drv_motion.h"			/* encoder counts (read only) */
+#include "motion_control.h"		/* encoder counts (read only) */
 #include "../subsystem1/wifi_telemetry.h"	/* telemetry_q statistics (read only) */
 #include "../test_report.h"
 

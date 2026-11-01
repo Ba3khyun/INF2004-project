@@ -1,5 +1,5 @@
 /*
- *	drv_motion.h
+ *	motion_control.h
  *	Subsystem 2 -- Motion Control (Buddy 2): motor, encoder and PID driver.
  *
  *	Ported from buddy2_motion_control/motion_control.h (Pico SDK) to this
@@ -16,8 +16,8 @@
  *	                   encoder R = GP6, encoder L = GP7 (IO_IRQ_BANK0)
  */
 
-#ifndef DRV_MOTION_H
-#define DRV_MOTION_H
+#ifndef MOTION_CONTROL_H
+#define MOTION_CONTROL_H
 
 #include "../app.h"
 #include <stdint.h>
