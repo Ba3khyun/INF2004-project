@@ -12,13 +12,15 @@
 #define S3_BATCH_SIZE       5   /* report to subsystem 4 every N samples[cite: 2] */
 
 #define THRESHOLD           1500  // Adjusted line-tracking threshold
-#define BARCODE_PIN         2     // GP2 digital barcode sensor
-#define BARCODE_TIMEOUT_MS  2500  // 2.5 seconds overall scan timeout
-#define QUIET_ZONE_TIMEOUT_MS 80  // 80ms continuous white confirms end of barcode
+#define BARCODE_PIN         17    // GP17 digital barcode sensor
+#define BARCODE_TIMEOUT_MS  10000  // 10 seconds overall scan timeout
+#define QUIET_ZONE_TIMEOUT_MS 3000  // 3s continuous white confirms end of barcode
+#define BARCODE_BAR_COUNT   15    // Black bars in each A-D barcode
+#define BARCODE_MIN_BAR_WIDTH_US 100
+#define BARCODE_EDGE_DEBOUNCE_US 500
 
 #define ADC_CHANNEL_RIGHT   0     // GP26 (sensor mounted right of center)
 #define ADC_CHANNEL_CENTER  1     // GP27 (IR_LINE_C_ADC)
-#define MAX_EDGES           64
 
 typedef enum {
     STATE_FOLLOWING_LINE,

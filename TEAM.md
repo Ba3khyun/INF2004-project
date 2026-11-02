@@ -54,8 +54,8 @@ fixed.
 | GP3 | | |
 | GP4 | | |
 | GP5 | | |
-| GP6 | | |
-| GP7 | | |
+| GP6 | S2 | right wheel encoder |
+| GP7 | S2 | left wheel encoder |
 | GP8 | | |
 | GP9 | | |
 | GP10 | | |
@@ -65,7 +65,7 @@ fixed.
 | GP14 | | |
 | GP15 | | |
 | GP16 | | |
-| GP17 | | |
+| GP17 | S3 | barcode sensor GPIO interrupt |
 | GP18 | | |
 | GP19 | *example:* S1 | external LED (LED + 330 Ω to GND) |
 | GP20 | | |
@@ -112,6 +112,7 @@ the drivers have no locking to stop it.
 | SPI1 | | | |
 | ADC | | | GP26–GP28 |
 | PWM slices (list) | | | |
+| IO_BANK0 GPIO IRQ | S2 shared dispatcher; S3 callback | `motion_task` dispatcher | GP6, GP7, GP17 |
 | WiFi radio, TCP/IP, MQTT | S1 (Buddy 1) | `cyw43_utk_task` (built in) = the Wi-Fi Telemetry Task, priority 40; Buddy 1's code runs inside it via `wifi_app_poll()` | GP23–25, GP29 |
 
 ### WiFi and MQTT are special

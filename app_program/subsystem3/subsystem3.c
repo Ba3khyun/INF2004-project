@@ -27,11 +27,12 @@ EXPORT ER subsystem3_init(void)
 		return mtx_stats;
 	}
 
-	/* Configure the barcode sensor input; the ADC driver configures GP26/27. */
+	/* Configure the barcode input; its shared GPIO IRQ is registered by the task. */
 	ER er = gpio_set_pin(BARCODE_PIN, GPIO_MODE_IN);
 	if (er != E_OK) {
 		return er;
 	}
+	clr_w(GPIO(BARCODE_PIN), GPIO_PDE);
 	set_w(GPIO(BARCODE_PIN), GPIO_PUE);
 
 	return E_OK;

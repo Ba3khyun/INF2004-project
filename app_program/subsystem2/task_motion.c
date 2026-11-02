@@ -37,7 +37,7 @@
 
 #define MOVE_PWM		20.0f
 #define TURN_PWM		15.0f
-#define STEER_RIGHT_INNER_PWM	12.0f
+#define STEER_INNER_PWM		12.0f
 
 /* Speed telemetry (TQ_FIELD_SPEED, cm/s).  WHEEL_DIAMETER_CM is a
    placeholder: measure the wheel and correct it. */
@@ -215,10 +215,10 @@ LOCAL void start_motion(MotionState command, BOOL continuous)
 		if (command == MOTION_ARC_RIGHT) {
 			tm_printf((UB*)"\nmotion: starting gentle right arc...\n");
 			motor1_forward(MOVE_PWM);
-			motor2_reverse(STEER_RIGHT_INNER_PWM);
+			motor2_reverse(STEER_INNER_PWM);
 		} else if (command == MOTION_ARC_LEFT) {
 			tm_printf((UB*)"\nmotion: starting gentle left arc...\n");
-			motor1_forward(STEER_RIGHT_INNER_PWM);
+			motor1_forward(STEER_INNER_PWM);
 			motor2_reverse(MOVE_PWM);
 		} else {
 			tm_printf((UB*)"\nmotion: starting %sFORWARD movement...\n",

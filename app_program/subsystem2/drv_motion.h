@@ -23,6 +23,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+typedef void (*GPIO_IRQ_HANDLER)(UINT pin, UINT events);
+
 /* Motors.  motors_init() must run on the owning task before any other
    motor call; it releases the PWM block from reset. */
 ER   motors_init(void);
@@ -48,6 +50,10 @@ void motors_right(float speed_percent);
 ER       encoders_init(void);
 uint32_t encoder_get_left_count(void);
 uint32_t encoder_get_right_count(void);
+
+/* Register a GPIO edge callback on the calling core. Each pin may be
+   registered once, after encoders_init() installs the shared IRQ handler. */
+ER       motion_gpio_irq_register(UINT pin, GPIO_IRQ_HANDLER handler);
 
 /* Wheel revolutions and distance */
 float encoder_left_revolutions(uint32_t pulses);

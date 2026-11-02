@@ -55,11 +55,15 @@
 #define PWM_SLICE_CTR(s)	(PWM_BASE + PWM_CHx_CTR + (s) * 0x14u)
 #define PWM_DIV_ONE		(1u << 4)	/* 8.4 fixed point: 1.0 */
 
-/* IO_BANK0 raw interrupt and per-core enable/status, GPIO0..7 */
+/* IO_BANK0 interrupt registers are grouped in banks of eight GPIOs. */
 #define IO_INTR0		(IO_BANK0_BASE + 0x0F0u)
 #define IO_PROC_INTE0(core)	(IO_BANK0_BASE + 0x100u + (core) * 0x30u)
 #define IO_PROC_INTS0(core)	(IO_BANK0_BASE + 0x120u + (core) * 0x30u)
-#define IO_EDGE_HIGH(pin)	(1u << (4u * (pin) + 3u))
+#define IO_INTR(pin)		(IO_INTR0 + ((pin) / 8u) * 4u)
+#define IO_PROC_INTE(core, pin)	(IO_PROC_INTE0(core) + ((pin) / 8u) * 4u)
+#define IO_PROC_INTS(core, pin)	(IO_PROC_INTS0(core) + ((pin) / 8u) * 4u)
+#define IO_EDGE_LOW(pin)	(1u << (4u * ((pin) % 8u) + 2u))
+#define IO_EDGE_HIGH(pin)	(1u << (4u * ((pin) % 8u) + 3u))
 
 #define INTNO_IO_BANK0		13	/* IO_IRQ_BANK0 */
 #define ENCODER_INTPRI		2	/* same level as the ADC/I2C drivers */
@@ -78,6 +82,8 @@ LOCAL volatile uint32_t encoder_left_count = 0u;
 LOCAL volatile uint32_t encoder_right_count = 0u;
 
 LOCAL UW enc_core;		/* core whose INTE has our bits: 0 or 1 */
+LOCAL volatile bool gpio_irq_ready = FALSE;
+LOCAL volatile GPIO_IRQ_HANDLER gpio_irq_handlers[GPIO_NUM];
 LOCAL UW pwm_top = 0u;		/* max PWM counter value */
 
 
@@ -220,20 +226,40 @@ void motors_right(float speed_percent)
  *  ENCODER SECTION
  * ========================================================== */
 
-/* IO_IRQ_BANK0 handler.  Runs on enc_core only, because only that core's
-   INTE register has our bits.  Edge interrupts latch in INTR and are
-   cleared by writing 1. */
+/* Shared IO_IRQ_BANK0 handler for the encoder and registered GPIO edges. */
 LOCAL void encoder_inthdr(UINT intno)
 {
-	UW ints = in_w(IO_PROC_INTS0(enc_core)) & ENC_MASK;
+	UW core = in_w(SIO_CPUID_ADDR) & 1u;
+	UW encoder_ints = 0u;
+	UINT pin;
 
-	if ((ints & IO_EDGE_HIGH(ENCODER_L_A)) != 0u) {
+	if (core == enc_core) {
+		encoder_ints = in_w(IO_PROC_INTS0(core)) & ENC_MASK;
+	}
+
+	if ((encoder_ints & IO_EDGE_HIGH(ENCODER_L_A)) != 0u) {
 		out_w(IO_INTR0, IO_EDGE_HIGH(ENCODER_L_A));
 		encoder_left_count++;
 	}
-	if ((ints & IO_EDGE_HIGH(ENCODER_R_A)) != 0u) {
+	if ((encoder_ints & IO_EDGE_HIGH(ENCODER_R_A)) != 0u) {
 		out_w(IO_INTR0, IO_EDGE_HIGH(ENCODER_R_A));
 		encoder_right_count++;
+	}
+
+	for (pin = 0u; pin < GPIO_NUM; ++pin) {
+		GPIO_IRQ_HANDLER handler = gpio_irq_handlers[pin];
+		UW mask;
+		UW events;
+
+		if (handler == NULL) {
+			continue;
+		}
+		mask = IO_EDGE_LOW(pin) | IO_EDGE_HIGH(pin);
+		events = in_w(IO_PROC_INTS(core, pin)) & mask;
+		if (events != 0u) {
+			out_w(IO_INTR(pin), events);
+			handler(pin, events);
+		}
 	}
 	ClearInt(intno);
 }
@@ -253,9 +279,7 @@ ER encoders_init(void)
 	encoder_pin_init(ENCODER_L_A);
 	encoder_pin_init(ENCODER_R_A);
 
-	/* IO_IRQ_BANK0 is one interrupt for every GPIO.  This driver owns
-	   it; another subsystem needing GPIO interrupts must share this
-	   handler (record it in TEAM.md section 3). */
+	/* IO_IRQ_BANK0 is shared with any additional registered GPIO clients. */
 	enc_core = in_w(SIO_CPUID_ADDR) & 1u;
 	out_w(IO_INTR0, ENC_MASK);		/* drop stale edges */
 
@@ -268,6 +292,35 @@ ER encoders_init(void)
 	set_w(IO_PROC_INTE0(enc_core), ENC_MASK);
 	ClearInt(INTNO_IO_BANK0);
 	EnableInt(INTNO_IO_BANK0, ENCODER_INTPRI);	/* this core's NVIC */
+	gpio_irq_ready = TRUE;
+	return E_OK;
+}
+
+ER motion_gpio_irq_register(UINT pin, GPIO_IRQ_HANDLER handler)
+{
+	UW core;
+	UW mask;
+
+	if (pin >= GPIO_NUM || handler == NULL) {
+		return E_PAR;
+	}
+	if (!gpio_irq_ready) {
+		return E_BUSY;
+	}
+	if (gpio_irq_handlers[pin] != NULL) {
+		return E_OBJ;
+	}
+	if (pin == ENCODER_L_A || pin == ENCODER_R_A) {
+		return E_OBJ;
+	}
+
+	core = in_w(SIO_CPUID_ADDR) & 1u;
+	mask = IO_EDGE_LOW(pin) | IO_EDGE_HIGH(pin);
+	out_w(IO_INTR(pin), mask);
+	gpio_irq_handlers[pin] = handler;
+	set_w(IO_PROC_INTE(core, pin), mask);
+	ClearInt(INTNO_IO_BANK0);
+	EnableInt(INTNO_IO_BANK0, ENCODER_INTPRI);
 	return E_OK;
 }
 

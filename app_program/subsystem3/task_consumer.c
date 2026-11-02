@@ -4,15 +4,149 @@
  */
 
 #include "subsystem3.h"
-#include "../subsystem2/subsystem2.h"   /* IF-01/02: SAMPLE_MSG[cite: 4] */
+#include "../subsystem2/subsystem2.h"   /* IF-01/02: SAMPLE_MSG */
 #include "../subsystem2/drv_motion.h"   /* Subsystem 2 Motor Control API */
-#include "../subsystem4/subsystem4.h"   /* IF-03: mbf_summary[cite: 4] */
+#include "../subsystem4/subsystem4.h"   /* IF-03: mbf_summary */
 
-static UW edge_intervals[MAX_EDGES];
-static UW edge_count = 0;
-static UW last_edge_time = 0;
-static bool new_barcode_triggered = false;
-static bool previous_barcode_is_black = false;
+#define LINE_RECOVERY_ARC_MS 500u
+#define RIGHT_LINE_LOSS_PIVOT_MS 150u
+#define LINE_THRESHOLD_HYSTERESIS 100u
+
+static volatile UW high_bar_widths[BARCODE_BAR_COUNT]; //when at black
+static volatile UW low_bar_widths[BARCODE_BAR_COUNT]; //when at white
+static volatile UW high_bar_count = 0;
+static volatile UW low_bar_count = 0;
+static volatile UW barcode_edge_count = 0;
+static volatile UW barcode_raw_edge_count = 0;
+static volatile UW barcode_ignored_edge_count = 0;
+static volatile UW last_edge_time = 0;
+static volatile bool barcode_scan_in_progress = false;
+static volatile bool barcode_level_high = false;
+
+static void capture_bar_width(volatile UW *widths, volatile UW *count, UW width)
+{
+	if (width < BARCODE_MIN_BAR_WIDTH_US) {
+		return;
+	}
+	if (*count < BARCODE_BAR_COUNT) {
+		widths[*count] = width;
+	} else {
+		for (UW i = 1u; i < BARCODE_BAR_COUNT; ++i) {
+			widths[i - 1u] = widths[i];
+		}
+		widths[BARCODE_BAR_COUNT - 1u] = width;
+	}
+	if (*count < BARCODE_BAR_COUNT + 1u) {
+		(*count)++;
+	}
+}
+
+static void barcode_gpio_isr(UINT gpio, UINT events)
+{
+	UW low_edge = 1u << (4u * (gpio % 8u) + 2u);
+	UW high_edge = 1u << (4u * (gpio % 8u) + 3u);
+	UW now = in_w(TIMER_TIMERAWL);
+	bool edge_level_high;
+
+	if ((events & (low_edge | high_edge)) == 0u) {
+		return;
+	}
+	barcode_raw_edge_count++;
+	edge_level_high = gpio_get_val(gpio) != 0u;
+
+	if (!barcode_scan_in_progress) {
+		barcode_scan_in_progress = true;
+		high_bar_count = 0;
+		low_bar_count = 0;
+		barcode_edge_count = 1;
+		barcode_ignored_edge_count = 0;
+		barcode_level_high = edge_level_high;
+		last_edge_time = now;
+		return;
+	}
+
+	if (edge_level_high == barcode_level_high ||
+	    (now - last_edge_time) < BARCODE_EDGE_DEBOUNCE_US) {
+		barcode_ignored_edge_count++;
+		return;
+	}
+
+	if (barcode_level_high) {
+		capture_bar_width(high_bar_widths, &high_bar_count, now - last_edge_time);
+	} else {
+		capture_bar_width(low_bar_widths, &low_bar_count, now - last_edge_time);
+	}
+	if (barcode_edge_count < 0xFFFFFFFFu) {
+		barcode_edge_count++;
+	}
+	barcode_level_high = edge_level_high;
+	last_edge_time = now;
+}
+
+static void reset_barcode_scan(void)
+{
+	barcode_scan_in_progress = false;
+	high_bar_count = 0;
+	low_bar_count = 0;
+	barcode_edge_count = 0;
+	barcode_raw_edge_count = 0;
+	barcode_ignored_edge_count = 0;
+}
+
+static char decode_barcode(const volatile UW *bar_widths, UW *pattern_out)
+{
+	static const UW pattern_a = 0x1A26u; //NNWWNWNNNWNNWWN
+	static const UW pattern_b = 0x1926u; //NNWWNNWNNWNNWWN
+	static const UW pattern_c = 0x1B06u; //NNWWNWWNNNNNWWN
+	static const UW pattern_d = 0x18A6u; //NNWWNNNWNWNNWWN
+	UW sorted_widths[BARCODE_BAR_COUNT];
+	UW narrow_total = 0u;
+	UW narrow_average;
+	UW wide_threshold;
+	UW pattern = 0u;
+	UW reversed_pattern = 0u;
+	UW i;
+
+	for (i = 0u; i < BARCODE_BAR_COUNT; ++i) {
+		UW width = bar_widths[i];
+		UW j = i;
+
+		while (j > 0u && sorted_widths[j - 1u] > width) {
+			sorted_widths[j] = sorted_widths[j - 1u];
+			--j;
+		}
+		sorted_widths[j] = width;
+	}
+
+	/* These templates each contain nine narrow and six wide bars. */
+	for (i = 0u; i < 9u; ++i) {
+		narrow_total += sorted_widths[i];
+	}
+	narrow_average = narrow_total / 9u;
+	if (narrow_average == 0u) {
+		*pattern_out = 0u;
+		return '?';
+	}
+	wide_threshold = narrow_average * 2u;
+
+	for (i = 0u; i < BARCODE_BAR_COUNT; ++i) {
+		pattern <<= 1;
+		if (bar_widths[i] >= wide_threshold) {
+			pattern |= 1u;
+		}
+	}
+	*pattern_out = pattern;
+
+	for (i = 0u; i < BARCODE_BAR_COUNT; ++i) {
+		reversed_pattern = (reversed_pattern << 1) | (pattern & 1u);
+		pattern >>= 1;
+	}
+	if (*pattern_out == pattern_a || reversed_pattern == pattern_a) return 'A';
+	if (*pattern_out == pattern_b || reversed_pattern == pattern_b) return 'B';
+	if (*pattern_out == pattern_c || reversed_pattern == pattern_c) return 'C';
+	if (*pattern_out == pattern_d || reversed_pattern == pattern_d) return 'D';
+	return '?';
+}
 
 static ER read_adc(ID device, W channel, UW *value)
 {
@@ -31,6 +165,7 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 	UB      text[S4_SUMMARY_MAX];
 	INT     len;
 	UW      count;
+	UW      irq_wait;
 	ER      er;
 
 	(void)stacd; (void)exinf;
@@ -50,9 +185,24 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 		return;
 	}
 	UW barcode_start_time = 0;
+	UW line_lost_start_time = 0;
 	UW last_debug_print = current_time.lo;
 	UB last_line_motion_command = 0;
-	previous_barcode_is_black = gpio_get_val(BARCODE_PIN) != 0;
+	bool right_line_correction_active = false;
+	bool right_line = false;
+	bool center_line = false;
+	for (irq_wait = 0u; irq_wait < 100u; ++irq_wait) {
+		er = motion_gpio_irq_register(BARCODE_PIN, barcode_gpio_isr);
+		if (er != E_BUSY) {
+			break;
+		}
+		tk_dly_tsk(1);
+	}
+	if (er != E_OK) {
+		tm_printf((UB*)"[S3] Failed to register barcode GPIO interrupt: %d\r\n", er);
+		(void)tk_cls_dev(adc_device, 0);
+		return;
+	}
 
 	while (1) {
 		/* --- PART A: Non-blocking check for background telemetry/statistics samples --- */
@@ -101,149 +251,128 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 		}
 		UW now = current_time.lo;
 
-		bool right_line = (right > THRESHOLD); 
-		bool center_line = (center > THRESHOLD);
+		right_line = right_line ?
+			(right > THRESHOLD - LINE_THRESHOLD_HYSTERESIS) :
+			(right > THRESHOLD + LINE_THRESHOLD_HYSTERESIS);
+		center_line = center_line ?
+			(center > THRESHOLD - LINE_THRESHOLD_HYSTERESIS) :
+			(center > THRESHOLD + LINE_THRESHOLD_HYSTERESIS);
 		
-		// Barcode pin: 0 for white (LED on), 1 for black (LED off)
-		bool barcode_is_black = gpio_get_val(BARCODE_PIN) != 0;
-		if (barcode_is_black != previous_barcode_is_black) {
-			if (edge_count == 0) {
-				edge_count = 1;
-				new_barcode_triggered = true;
-			} else if (edge_count < MAX_EDGES) {
-				edge_intervals[edge_count - 1] = now - last_edge_time;
-				edge_count++;
-			}
-			last_edge_time = now;
-			previous_barcode_is_black = barcode_is_black;
-		}
-		int barcode_val_print = barcode_is_black ? 1 : 0;
+		int barcode_val_print = gpio_get_val(BARCODE_PIN) != 0 ? 1 : 0;
 
-		// Print debug status once per second.
+		/// Print debug status once per second.
 		if ((UW)(now - last_debug_print) >= 1000) {
-			tm_printf((UB*)"RAW -> R: %4u [%s] | C: %4u [%s] | Barcode (GP2): %d [%s] | Threshold: %d\r\n",
-				  right, right_line ? "BLACK" : "WHITE",
-				  center, center_line ? "BLACK" : "WHITE",
-				  barcode_val_print, barcode_is_black ? "BLACK (1)" : "WHITE (0)",
-				  THRESHOLD);
+			tm_printf((UB*)"RAW -> R: %4u [%s] | C: %4u [%s] | Barcode (GP17): %d | Threshold: %d\r\n",
+				      right, right_line ? "BLACK" : "WHITE",
+				      center, center_line ? "BLACK" : "WHITE",
+				      barcode_val_print, THRESHOLD);
 			last_debug_print = now;
+		}
+
+		// Transition into barcode reading state as soon as ISR flags activity
+		if (barcode_scan_in_progress &&
+		    (current_state == STATE_FOLLOWING_LINE ||
+		     current_state == STATE_LOST_LINE)) {
+			tm_printf((UB*)"Transitioning to STATE_READING_BARCODE...\r\n");
+			barcode_start_time = in_w(TIMER_TIMERAWL);
+			current_state = STATE_READING_BARCODE;
 		}
 
 		switch (current_state) {
 			case STATE_FOLLOWING_LINE:
-				// 1. Check if line is completely lost
 				if (!right_line && !center_line) {
+					if (right_line_correction_active) {
+						tm_printf((UB*)"[STEERING] Right correction lost the line; trying a brief sharp right pivot.\r\n");
+						line_lost_start_time = now;
+						er = motion_cmd_post(MC_CMD_DRIVE_RIGHT);
+						if (er == E_OK) {
+							last_line_motion_command = MC_CMD_DRIVE_RIGHT;
+						}
+						current_state = STATE_LOST_LINE;
+						break;
+					}
+
 					tm_printf((UB*)"[STEERING] Line lost; starting gentle left recovery arc.\r\n");
+					line_lost_start_time = now;
 					er = motion_cmd_post(MC_CMD_STEER_LEFT);
-					if (er != E_OK) {
-						tm_printf((UB*)"[STEERING] Left recovery command failed: %d\r\n", er);
-					} else {
+					if (er == E_OK) {
 						last_line_motion_command = MC_CMD_STEER_LEFT;
 					}
 					current_state = STATE_LOST_LINE;
 					break;
 				}
 
-				// Center detection takes priority so it always commands straight.
-				UB line_motion_command;
+				UB line_motion_command = MC_CMD_DRIVE_FORWARD;
 				if (center_line) {
-					tm_printf((UB*)"[STEERING] Center aligned -> Go Straight\r\n");
+					right_line_correction_active = false;
 					line_motion_command = MC_CMD_DRIVE_FORWARD;
-				} 
-				else if (right_line) {
-					tm_printf((UB*)"[STEERING] Line under right sensor -> Gentle right correction\r\n");
+				} else if (right_line) {
+					right_line_correction_active = true;
 					line_motion_command = MC_CMD_STEER_RIGHT;
 				} 
-				if (line_motion_command != last_line_motion_command ||
-				    motion_is_idle()) {
+
+				if (line_motion_command != last_line_motion_command || motion_is_idle()) {
 					er = motion_cmd_post(line_motion_command);
-					if (er != E_OK) {
-						tm_printf((UB*)"[STEERING] Motion command failed: %d\r\n", er);
-					} else {
+					if (er == E_OK) {
 						last_line_motion_command = line_motion_command;
 					}
-				}
-
-				// 3. Check if barcode scan triggered
-				if (new_barcode_triggered) {
-					new_barcode_triggered = false;
-					edge_count = 1; 
-					barcode_start_time = now;
-					last_edge_time = barcode_start_time;
-					
-					tm_printf((UB*)"Transitioning to STATE_READING_BARCODE...\r\n");
-					current_state = STATE_READING_BARCODE;
 				}
 				break;
 
 			case STATE_READING_BARCODE:
 			{
-				if ((UW)(now - barcode_start_time) > BARCODE_TIMEOUT_MS) {
-					tm_printf((UB*)"TIMEOUT: Barcode read took too long! Aborting...\r\n");
-					edge_count = 0;
+				UW current_us = in_w(TIMER_TIMERAWL);
+				
+				//Check how long it has been reading the barcode
+				if ((current_us - barcode_start_time) > (BARCODE_TIMEOUT_MS * 1000UL)) {
+					tm_printf((UB*)"TIMEOUT: Barcode read took too long. Raw edges=%u, accepted=%u, ignored=%u, high=%u bars, low=%u bars, GP17=%u.\r\n",
+						  barcode_raw_edge_count, barcode_edge_count,
+						  barcode_ignored_edge_count, high_bar_count, low_bar_count,
+						  gpio_get_val(BARCODE_PIN));
+					reset_barcode_scan();
 					current_state = STATE_FOLLOWING_LINE; 
 					break;
 				}
 
-				if (barcode_is_black && (UW)(now - last_edge_time) > QUIET_ZONE_TIMEOUT_MS) {
-					tm_printf((UB*)"Barcode scan complete! Total edges captured: %u\r\n", edge_count);
+				bool high_scan_complete =
+					high_bar_count >= BARCODE_BAR_COUNT && !barcode_level_high;
+				bool low_scan_complete =
+					low_bar_count >= BARCODE_BAR_COUNT && barcode_level_high;
+				if ((high_scan_complete || low_scan_complete) &&
+				    (current_us - last_edge_time) >
+					    (QUIET_ZONE_TIMEOUT_MS * 1000UL)) {
+					UW high_pattern = 0u;
+					UW low_pattern = 0u;
+					char high_decoded = '?';
+					char low_decoded = '?';
+					char decoded_char;
 
-					if (edge_count >= 6) {
-						UW total_duration = 0;
-						for (UW i = 0; i < edge_count - 1; i++) {
-							total_duration += edge_intervals[i];
-						}
-						UW avg_duration = total_duration / (edge_count - 1);
-
-						UW pattern_signature = 0;
-						for (UW i = 0; i < edge_count - 1; i++) {
-							pattern_signature <<= 1;
-							if (edge_intervals[i] > (avg_duration * 13 / 10)) {
-								pattern_signature |= 1; 
-							} else {
-								pattern_signature |= 0; 
-							}
-						}
-
-						tm_printf((UB*)">>> CAPTURED PATTERN SIGNATURE: 0x%x <<<\r\n", pattern_signature);
-
-						char decoded_char = '?';
-						if (pattern_signature == 0x128)      decoded_char = 'A';
-						else if (pattern_signature == 0x144) decoded_char = 'B';
-						else if (pattern_signature == 0x182) decoded_char = 'C';
-						else if (pattern_signature == 0x10A) decoded_char = 'D';
-
-						RobotCommand cmd = CMD_UNKNOWN;
-						switch (decoded_char) {
-							case 'A': tm_printf((UB*)"-> Decoded 'A': Turn Left\r\n"); cmd = CMD_TURN_LEFT; break;
-							case 'B': tm_printf((UB*)"-> Decoded 'B': Turn Right\r\n"); cmd = CMD_TURN_RIGHT; break;
-							case 'C': tm_printf((UB*)"-> Decoded 'C': Go Straight\r\n"); cmd = CMD_GO_STRAIGHT; break;
-							case 'D': tm_printf((UB*)"-> Decoded 'D': U-Turn\r\n"); cmd = CMD_U_TURN; break;
-							default: tm_printf((UB*)"-> Unknown pattern (0x%x). Resuming line tracking.\r\n", pattern_signature); break;
-						}
-
-						UB motion_command = 0;
-						switch (cmd) {
-							case CMD_TURN_LEFT:  motion_command = MC_CMD_LEFT; break;
-							case CMD_TURN_RIGHT: motion_command = MC_CMD_RIGHT; break;
-							case CMD_GO_STRAIGHT: motion_command = MC_CMD_FORWARD; break;
-							case CMD_U_TURN:
-								tm_printf((UB*)"[BARCODE] U-turn is not supported by Subsystem 2.\r\n");
-								break;
-							default:
-								break;
-						}
-						if (motion_command != 0) {
-							er = motion_cmd_post(motion_command);
-							if (er != E_OK) {
-								tm_printf((UB*)"[BARCODE] Motion command failed: %d\r\n", er);
-							}
-						}
+					if (high_scan_complete) {
+						high_decoded = decode_barcode(high_bar_widths, &high_pattern);
+					}
+					if (low_scan_complete) {
+						low_decoded = decode_barcode(low_bar_widths, &low_pattern);
+					}
+					if (high_decoded != '?' && low_decoded != '?' &&
+					    high_decoded != low_decoded) {
+						decoded_char = '?';
+					} else if (high_decoded != '?') {
+						decoded_char = high_decoded;
 					} else {
-						tm_printf((UB*)"-> Scan rejected: Edge count too low (%u)\r\n", edge_count);
+						decoded_char = low_decoded;
 					}
 
-					edge_count = 0;
+					tm_printf((UB*)"Barcode scan complete. Raw edges=%u, accepted=%u, ignored=%u, high=%u bars, low=%u bars.\r\n",
+						  barcode_raw_edge_count, barcode_edge_count,
+						  barcode_ignored_edge_count, high_bar_count, low_bar_count);
+					if (decoded_char == '?') {
+						tm_printf((UB*)"Unknown or ambiguous barcode pattern (high=0x%x, low=0x%x).\r\n",
+							  high_pattern, low_pattern);
+					} else {
+						tm_printf((UB*)"-> Decoded Character: %c\r\n", decoded_char);
+					}
+
+					reset_barcode_scan();
 					current_state = STATE_FOLLOWING_LINE;
 				}
 				break;
@@ -251,15 +380,35 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 
 			case STATE_LOST_LINE:
 				if (right_line || center_line) {
+					right_line_correction_active = false;
 					tm_printf((UB*)"[STEERING] Line reacquired; resuming line following.\r\n");
 					last_line_motion_command = 0;
 					current_state = STATE_FOLLOWING_LINE;
-				} else if (last_line_motion_command != MC_CMD_STEER_LEFT) {
+				} else if (right_line_correction_active &&
+					   (UW)(now - line_lost_start_time) <
+						   RIGHT_LINE_LOSS_PIVOT_MS) {
+					if (last_line_motion_command != MC_CMD_DRIVE_RIGHT ||
+					    motion_is_idle()) {
+						er = motion_cmd_post(MC_CMD_DRIVE_RIGHT);
+						if (er == E_OK) {
+							last_line_motion_command = MC_CMD_DRIVE_RIGHT;
+						}
+					}
+				} else if (right_line_correction_active) {
+					right_line_correction_active = false;
+					tm_printf((UB*)"[STEERING] Brief right pivot did not reacquire the line; switching to left recovery.\r\n");
+					line_lost_start_time = now;
 					er = motion_cmd_post(MC_CMD_STEER_LEFT);
-					if (er != E_OK) {
-						tm_printf((UB*)"[STEERING] Left line recovery command failed: %d\r\n", er);
-					} else {
+					if (er == E_OK) {
 						last_line_motion_command = MC_CMD_STEER_LEFT;
+					}
+				} else if ((UW)(now - line_lost_start_time) >=
+					   LINE_RECOVERY_ARC_MS &&
+					   last_line_motion_command != MC_CMD_DRIVE_LEFT) {
+					tm_printf((UB*)"[STEERING] Line not found; escalating to sharper left pivot.\r\n");
+					er = motion_cmd_post(MC_CMD_DRIVE_LEFT);
+					if (er == E_OK) {
+						last_line_motion_command = MC_CMD_DRIVE_LEFT;
 					}
 				}
 				break;
