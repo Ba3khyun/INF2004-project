@@ -100,6 +100,12 @@ EXPORT ER motion_cmd_post(UB cmd)
 	case MC_CMD_RIGHT:
 	case MC_CMD_STOP:
 	case MC_CMD_CLEAR:
+	case MC_CMD_DRIVE_FORWARD:
+	case MC_CMD_DRIVE_RIGHT:
+	case MC_CMD_DRIVE_LEFT:
+	case MC_CMD_STEER_RIGHT:
+	case MC_CMD_STEER_LEFT:
+	case MC_CMD_HALT:
 		break;
 	default:
 		return E_PAR;

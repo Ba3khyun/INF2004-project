@@ -16,7 +16,7 @@
  */
 
 #include "subsystem2.h"
-#include "motion_control.h"		/* encoder counts (read only) */
+#include "motion_control.h"			/* encoder counts (read only) */
 #include "../subsystem1/wifi_telemetry.h"	/* telemetry_q statistics (read only) */
 #include "../test_report.h"
 
@@ -145,7 +145,7 @@ EXPORT void subsystem2_test(void)
 	}
 
 	TEST_CHECK("S2-U05", motion_cmd_post((UB)'Z') == E_PAR &&
-		   motion_cmd_post(0) == E_PAR && motion_cmd_post((UB)'f') == E_PAR,
+		   motion_cmd_post(0) == E_PAR && motion_cmd_post((UB)'z') == E_PAR,
 		   "motion_cmd_post rejects unknown command codes");
 
 	{

@@ -36,6 +36,8 @@
 /* Input pins for the two wheel encoders */
 #define ENCODER_R_A	6u
 #define ENCODER_L_A	7u
+#define ENCODER_R_B	16u	/* wired, not yet decoded */
+#define ENCODER_L_B	17u	/* wired, not yet decoded */
 
 #define PWM_FREQUENCY_HZ	20000u
 
@@ -55,11 +57,18 @@
 #define PWM_SLICE_CTR(s)	(PWM_BASE + PWM_CHx_CTR + (s) * 0x14u)
 #define PWM_DIV_ONE		(1u << 4)	/* 8.4 fixed point: 1.0 */
 
-/* IO_BANK0 raw interrupt and per-core enable/status, GPIO0..7 */
-#define IO_INTR0		(IO_BANK0_BASE + 0x0F0u)
-#define IO_PROC_INTE0(core)	(IO_BANK0_BASE + 0x100u + (core) * 0x30u)
-#define IO_PROC_INTS0(core)	(IO_BANK0_BASE + 0x120u + (core) * 0x30u)
-#define IO_EDGE_HIGH(pin)	(1u << (4u * (pin) + 3u))
+/* IO_BANK0: four 32-bit interrupt groups, eight GPIOs per group.
+   GP6/GP7 are in group 0; GP28 is in group 3. */
+#define IO_INTR_BANK(bank)        (IO_BANK0_BASE + 0x0F0u + (bank) * 4u)
+#define IO_PROC_INTE_BANK(core, bank) (IO_BANK0_BASE + 0x100u + (core) * 0x30u + (bank) * 4u)
+#define IO_PROC_INTS_BANK(core, bank) (IO_BANK0_BASE + 0x120u + (core) * 0x30u + (bank) * 4u)
+#define IO_INTR0                 IO_INTR_BANK(0u)
+#define IO_PROC_INTE0(core)      IO_PROC_INTE_BANK((core), 0u)
+#define IO_PROC_INTS0(core)      IO_PROC_INTS_BANK((core), 0u)
+#define IO_GPIO_BANK(pin)        ((pin) / 8u)
+#define IO_EDGE_HIGH(pin)        (1u << (4u * ((pin) % 8u) + 3u))
+#define IO_EDGE_LOW(pin)         (1u << (4u * ((pin) % 8u) + 2u))
+#define IO_EDGE_BOTH(pin)	(IO_EDGE_LOW(pin) | IO_EDGE_HIGH(pin))
 
 #define INTNO_IO_BANK0		13	/* IO_IRQ_BANK0 */
 #define ENCODER_INTPRI		2	/* same level as the ADC/I2C drivers */
@@ -79,6 +88,15 @@ LOCAL volatile uint32_t encoder_right_count = 0u;
 
 LOCAL UW enc_core;		/* core whose INTE has our bits: 0 or 1 */
 LOCAL UW pwm_top = 0u;		/* max PWM counter value */
+
+/* Barcode GPIO uses the same IO_IRQ_BANK0 handler as the encoders.
+   The motion task owns the IRQ on core 1; registration may originate
+   from Buddy 3's task on core 0 after encoder initialization. */
+LOCAL volatile BOOL encoder_irq_ready = FALSE;
+LOCAL motion_gpio_irq_callback_t aux_gpio_callback = 0;
+LOCAL UINT aux_gpio_pin = 0u;
+LOCAL UW aux_gpio_mask = 0u;
+LOCAL UW aux_gpio_bank = 0u;
 
 
 LOCAL UW speed_to_pwm(float speed_percent)
@@ -220,22 +238,71 @@ void motors_right(float speed_percent)
  *  ENCODER SECTION
  * ========================================================== */
 
-/* IO_IRQ_BANK0 handler.  Runs on enc_core only, because only that core's
-   INTE register has our bits.  Edge interrupts latch in INTR and are
-   cleared by writing 1. */
+/* IO_IRQ_BANK0 is shared across the GPIO interrupt groups.
+   GP6/GP7 use group 0, while the barcode GPIO may use another group.
+   This handler runs on the encoder-owning core only. */
 LOCAL void encoder_inthdr(UINT intno)
 {
-	UW ints = in_w(IO_PROC_INTS0(enc_core)) & ENC_MASK;
+    UW encoder_pending = in_w(IO_PROC_INTS0(enc_core)) & ENC_MASK;
+    UW aux_pending = 0u;
 
-	if ((ints & IO_EDGE_HIGH(ENCODER_L_A)) != 0u) {
-		out_w(IO_INTR0, IO_EDGE_HIGH(ENCODER_L_A));
-		encoder_left_count++;
-	}
-	if ((ints & IO_EDGE_HIGH(ENCODER_R_A)) != 0u) {
-		out_w(IO_INTR0, IO_EDGE_HIGH(ENCODER_R_A));
-		encoder_right_count++;
-	}
-	ClearInt(intno);
+    if (aux_gpio_callback != 0) {
+        aux_pending = in_w(IO_PROC_INTS_BANK(enc_core, aux_gpio_bank)) & aux_gpio_mask;
+    }
+
+    /* Clear each GPIO bank separately before invoking the callback. */
+    if (encoder_pending != 0u) {
+        out_w(IO_INTR0, encoder_pending);
+    }
+    if (aux_pending != 0u) {
+        out_w(IO_INTR_BANK(aux_gpio_bank), aux_pending);
+    }
+
+    if ((encoder_pending & IO_EDGE_HIGH(ENCODER_L_A)) != 0u) {
+        encoder_left_count++;
+    }
+    if ((encoder_pending & IO_EDGE_HIGH(ENCODER_R_A)) != 0u) {
+        encoder_right_count++;
+    }
+    if (aux_pending != 0u && aux_gpio_callback != 0) {
+        aux_gpio_callback(aux_gpio_pin, (UINT)aux_pending);
+    }
+    ClearInt(intno);
+}
+
+/* Register one auxiliary GPIO for rising/falling interrupts.
+   The GPIO belongs to the existing IO_IRQ_BANK0 handler, not a second IRQ.
+   No motor, encoder, or line-sensor pins may be registered as barcode. */
+ER motion_gpio_irq_register(UINT pin, motion_gpio_irq_callback_t callback)
+{
+    UW mask;
+    UW bank;
+
+    if (pin > 29u || pin == ENCODER_L_A || pin == ENCODER_R_A ||
+        pin == ENCODER_L_B || pin == ENCODER_R_B ||
+        (pin >= MOTOR_L_A && pin <= MOTOR_R_B) ||
+        pin == 26u || pin == 27u || callback == 0) {
+        return E_PAR;
+    }
+    if (!encoder_irq_ready) {
+        return E_BUSY;
+    }
+    if (aux_gpio_callback != 0) {
+        return (pin == aux_gpio_pin && callback == aux_gpio_callback) ? E_OK : E_BUSY;
+    }
+
+    bank = IO_GPIO_BANK(pin);
+    mask = IO_EDGE_BOTH(pin);
+    /* Buddy 3 configures the pin and pull resistor in subsystem3_init. */
+    aux_gpio_pin = pin;
+    aux_gpio_bank = bank;
+    aux_gpio_mask = mask;
+    aux_gpio_callback = callback;
+    /* Publish the callback before enabling its IRQ on the owner core. */
+    __asm volatile ("dmb" ::: "memory");
+    out_w(IO_INTR_BANK(bank), mask); /* Discard stale edges in the right bank. */
+    set_w(IO_PROC_INTE_BANK(enc_core, bank), mask);
+    return E_OK;
 }
 
 LOCAL void encoder_pin_init(UINT pin)
@@ -268,6 +335,7 @@ ER encoders_init(void)
 	set_w(IO_PROC_INTE0(enc_core), ENC_MASK);
 	ClearInt(INTNO_IO_BANK0);
 	EnableInt(INTNO_IO_BANK0, ENCODER_INTPRI);	/* this core's NVIC */
+	encoder_irq_ready = TRUE;
 	return E_OK;
 }
 

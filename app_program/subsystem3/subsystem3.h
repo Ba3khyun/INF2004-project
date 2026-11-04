@@ -1,9 +1,6 @@
 /*
  *	subsystem3.h
- *	Subsystem 3 -- Consumer (statistics).  Student ID: <student ID>.
- *
- *	Public interface of subsystem 3.  Other subsystems include it as
- *	"../subsystem3/subsystem3.h".
+ *	Subsystem 3 -- Consumer, IR Line Sensors, & Barcode Reader.
  */
 
 #ifndef SUBSYSTEM3_H
@@ -11,26 +8,50 @@
 
 #include "../app.h"
 
-#define S3_PRI_CONSUMER		16	/* priority band 16-17 (TEAM.md) */
-#define S3_BATCH_SIZE		5	/* report to subsystem 4 every N samples */
+#define S3_PRI_CONSUMER     16  /* priority band 16-17[cite: 2] */
+#define S3_BATCH_SIZE       5   /* report to subsystem 4 every N samples[cite: 2] */
 
-/* IF-01: send SAMPLE_MSG (subsystem2.h) here with tk_snd_mbx */
-IMPORT ID	mbx_samples;
+#define THRESHOLD           1500  // Adjusted line-tracking threshold
+#define BARCODE_PIN         28    // GP17 digital barcode sensor
+#define BARCODE_TIMEOUT_MS  10000  // 10 seconds overall scan timeout
+#define QUIET_ZONE_TIMEOUT_MS 3000  // 3s continuous white confirms end of barcode
+#define BARCODE_BAR_COUNT   15    // Black bars in each A-D barcode
+#define BARCODE_MIN_BAR_WIDTH_US 100
+#define BARCODE_EDGE_DEBOUNCE_US 500
 
-/* IF-04: statistics.  Read them ONLY while holding mtx_stats:
- *	tk_loc_mtx(mtx_stats, TMO_FEVR);  copy = app_stats;  tk_unl_mtx(mtx_stats);
- */
+#define ADC_CHANNEL_RIGHT   0     // GP26 (sensor mounted right of center)
+#define ADC_CHANNEL_CENTER  1     // GP27 (IR_LINE_C_ADC)
+
+typedef enum {
+    STATE_FOLLOWING_LINE,
+    STATE_READING_BARCODE,
+    STATE_LOST_LINE,
+    STATE_TIMEOUT_RECOVERY
+} RobotState;
+
+typedef enum {
+    CMD_UNKNOWN,
+    CMD_TURN_LEFT,      // Barcode A
+    CMD_TURN_RIGHT,     // Barcode B
+    CMD_GO_STRAIGHT,    // Barcode C
+    CMD_U_TURN          // Barcode D
+} RobotCommand;
+
+/* IF-01: mailbox handle */
+IMPORT ID   mbx_samples;
+
+/* IF-04: statistics[cite: 2] */
 typedef struct {
-	UW	received;	/* samples received so far */
-	INT	min;
-	INT	max;
-	W	sum;
+    UW  received;
+    INT min;
+    INT max;
+    W   sum;
 } APP_STATS;
 
-IMPORT ID		mtx_stats;
-IMPORT APP_STATS	app_stats;
+IMPORT ID       mtx_stats;
+IMPORT APP_STATS    app_stats;
 
-/* Private to subsystem 3 */
-IMPORT void	consumer_task(INT stacd, void *exinf);
+/* Private task declaration */
+IMPORT void consumer_task(INT stacd, void *exinf);
 
 #endif /* SUBSYSTEM3_H */

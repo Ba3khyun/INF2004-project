@@ -13,7 +13,7 @@
  *
  *	Pins (Robo Pico):  motor L = GP8/GP9 (PWM slice 4 A/B)
  *	                   motor R = GP10/GP11 (PWM slice 5 A/B)
- *	                   encoder R = GP6, encoder L = GP7 (IO_IRQ_BANK0)
+ *	                   encoder R A/B = GP6/GP16, encoder L A/B = GP7/GP17
  */
 
 #ifndef MOTION_CONTROL_H
@@ -46,6 +46,15 @@ void motors_right(float speed_percent);
    encoders_init() enables the GPIO interrupt on the core it is called
    from, so call it from the owning task, which is pinned to one core. */
 ER       encoders_init(void);
+
+/* Shared IO_IRQ_BANK0 registration for one auxiliary GPIO on GP0..GP29.
+   Both rising and falling edges are dispatched on the encoder-owning core.
+   GP28 uses GPIO interrupt bank 3; GP6 and GP7 use bank 0.
+   Register only after encoders_init() succeeds.  Callback runs in IRQ
+   context: do not block, allocate, or print from it.
+   The events argument contains the raw IO_BANK0 edge-bit mask. */
+typedef void (*motion_gpio_irq_callback_t)(UINT gpio, UINT events);
+ER motion_gpio_irq_register(UINT gpio, motion_gpio_irq_callback_t callback);
 uint32_t encoder_get_left_count(void);
 uint32_t encoder_get_right_count(void);
 
@@ -83,4 +92,4 @@ void  pid_set_limits(PIDController *pid,
 		     float output_min,
 		     float output_max);
 
-#endif /* DRV_MOTION_H */
+#endif /* MOTION_CONTROL_H */

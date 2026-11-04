@@ -37,9 +37,15 @@
 #define MC_CMD_Q_DEPTH		4
 #define MC_CMD_FORWARD		((UB)'F')	/* forward 0.50 revolutions */
 #define MC_CMD_LEFT		((UB)'L')	/* pivot left 0.25 revolutions */
-#define MC_CMD_RIGHT		((UB)'R')	/* pivot right 0.25 revolutions */
+#define MC_CMD_RIGHT		((UB)'R')	/* pivot right 0.25 wheel revolutions */
 #define MC_CMD_STOP		((UB)'X')	/* brake and latch local stop */
 #define MC_CMD_CLEAR		((UB)'C')	/* clear local stop and FLT_MOTOR */
+#define MC_CMD_DRIVE_FORWARD	((UB)'f')	/* continuous forward until another command */
+#define MC_CMD_DRIVE_RIGHT	((UB)'r')	/* continuous right pivot until another command */
+#define MC_CMD_DRIVE_LEFT	((UB)'l')	/* continuous left pivot until another command */
+#define MC_CMD_STEER_RIGHT	((UB)'q')	/* gentle forward arc to the right */
+#define MC_CMD_STEER_LEFT	((UB)'a')	/* gentle forward arc to the left */
+#define MC_CMD_HALT		((UB)'H')	/* brake without latching emergency stop */
 
 IMPORT ID	motion_cmd_q;
 IMPORT ID	tid_motion;	/* motion_task's ID (read by the on-target tests) */
@@ -53,9 +59,11 @@ IMPORT volatile UW	motion_tick_count;	/* control ticks run */
 IMPORT volatile UW	motion_ticks_missed;	/* wake-ups that queued up */
 IMPORT void		motion_cyclic_handler(void *exinf);
 
-/* Queue one command.  Never blocks.
-   Returns E_OK, E_PAR (unknown code) or E_TMOUT (queue full). */
+/* Queue one command.  Continuous drive commands run until replaced or halted.
+   Never blocks; returns E_OK, E_PAR (unknown code) or E_TMOUT (queue full). */
 IMPORT ER	motion_cmd_post(UB cmd);
+/* TRUE only when the motion task is idle and no command is queued. */
+IMPORT BOOL	motion_is_idle(void);
 
 /* Private to subsystem 2 */
 IMPORT void	motion_task(INT stacd, void *exinf);
