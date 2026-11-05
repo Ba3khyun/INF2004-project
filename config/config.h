@@ -36,10 +36,7 @@
 #define	CNF_SYSTEMAREA_TOP	0	/* 0: Use system default address */
 #define CNF_SYSTEMAREA_END	0	/* 0: Use system default address */
 
-/* 48 (was 32): the IS-06 task table puts the Wi-Fi Telemetry Task at 40,
-   which tk_cre_tsk rejects with E_PAR when the maximum is 32.  Above 32 the
-   kernel uses its multi-word ready-queue bitmap (ready_queue.h). */
-#define	CNF_MAX_TSKPRI		48	/* Task Max priority */
+#define	CNF_MAX_TSKPRI		32	/* Task Max priority */
 
 #define CNF_TIMER_PERIOD	10	/* System timer period */
 

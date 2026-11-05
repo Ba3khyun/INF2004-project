@@ -84,8 +84,9 @@ LOCAL ER write_atr(T_I2C_DCB *p_dcb, T_DEVREQ *req)
 	case TDN_I2C_EXEC:
 		if(req->size >= sizeof(T_I2C_EXEC)) {
 			p_ex = (T_I2C_EXEC*)(req->buf);
-			if(p_ex->snd_size <=0 || p_ex->snd_size > DEVCNF_I2C_MAX_SDATSZ) return E_PAR;
-			if(p_ex->rcv_size <=0 || p_ex->rcv_size > DEVCNF_I2C_MAX_RDATSZ) return E_PAR;
+			if(p_ex->snd_size <=0 || p_ex->snd_size > DEVCNF_I2C_MAX_SDATSZ) return E_PAR;	// rcv_size = 0 is now permitted for write-only transactions
+			if(p_ex->rcv_size < 0 || p_ex->rcv_size > DEVCNF_I2C_MAX_RDATSZ) return E_PAR;
+			if(p_ex->rcv_size > 0 && p_ex->rcv_data == NULL) return E_PAR;	// must be positive because a transaction needs data to send
 
 			rtn = dev_i2c_llctl(p_dcb->unit, LLD_I2C_EXEC, req->start, req->size, (UW*)p_ex);
 			if(rtn > 0) {
@@ -152,7 +153,6 @@ LOCAL ER write_data(T_I2C_DCB *p_dcb, T_DEVREQ *req)
 	} else {
 		req->asize = req->size;
 	}
-
 
 	return err;
 }
@@ -313,10 +313,14 @@ EXPORT ER i2c_read_reg(ID dd, UW sadr, UW radr, UB *data)
 	T_I2C_EXEC	exec;
 	SZ		asz;
 	ER		err;
+	UB reg = (UB)radr;
+
+    if (data == NULL)
+        return E_PAR;
 
 	exec.sadr	= sadr;
 	exec.snd_size	= 1;
-	exec.snd_data	= (UB*)&radr;
+	exec.snd_data	= &reg;
 	exec.rcv_size	= 1;
 	exec.rcv_data	= data;
 
@@ -327,14 +331,30 @@ EXPORT ER i2c_read_reg(ID dd, UW sadr, UW radr, UB *data)
 
 EXPORT ER i2c_write_reg(ID dd, UW sadr, UW radr, UB data)
 {
-	UB	snd_data[2];
-	SZ	asz;
-	ER	err;
+    T_I2C_EXEC exec;
+    SZ asz;
+    ER err;
+    UB snd_data[2];	// snd_size = 2: send the register address, then its value
 
-	snd_data[0] = radr;
-	snd_data[1] = data;
+    snd_data[0] = (UB)radr;	// the sensor register address
+    snd_data[1] = data;		// the value to write	
+
+    exec.sadr = sadr;
+    exec.snd_size = sizeof(snd_data);
+    exec.snd_data = snd_data;	// snd_data stays alive until tk_swri_dev() returns, so the local buffer is valid during the transaction.
+    exec.rcv_size = 0;			// rcv_size = 0: do not request a read phase.
+    exec.rcv_data = NULL;
+
+    err = tk_swri_dev(dd, TDN_I2C_EXEC, &exec, sizeof(T_I2C_EXEC), &asz);
+
+	// UB	snd_data[2];
+	// SZ	asz;
+	// ER	err;
+
+	// snd_data[0] = radr;	
+	// snd_data[1] = data;	// the value to write	
 	
-	err = tk_swri_dev(dd, sadr, snd_data, sizeof(snd_data), &asz);
+	// err = tk_swri_dev(dd, sadr, snd_data, sizeof(snd_data), &asz);
 
 	return err;
 }

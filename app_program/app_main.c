@@ -88,7 +88,10 @@ EXPORT ID app_start_task(FP entry, PRI pri, UW prc, const char *name)
 
 	/* tk_sta_tsk: DORMANT -> READY.  The int is passed as stacd. */
 	er = tk_sta_tsk(tid, 0);
-	CHECK(er, name);
+	if (er < E_OK) {
+		tm_printf((UB*)"ERROR tk_sta_tsk for %s: %d\n", name, er);
+		return (ID)er;
+	}
 	return tid;
 }
 
@@ -106,9 +109,6 @@ EXPORT INT usermain(void)
 #else
 	tm_printf((UB*)"single-core build\n");
 #endif
-
-	/* Phase 0: shared cross-subsystem objects (app_shared.c, interim) */
-	CHECK(app_shared_init(), "app_shared_init");
 
 	/* Phase 1: every subsystem creates its kernel objects */
 	CHECK(subsystem1_init(), "subsystem1_init");

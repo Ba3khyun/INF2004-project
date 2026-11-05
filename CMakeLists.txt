@@ -1,3 +1,19 @@
+# == DO NOT EDIT THE FOLLOWING LINES for the Raspberry Pi Pico VS Code Extension to work ==
+if(WIN32)
+    set(USERHOME $ENV{USERPROFILE})
+else()
+    set(USERHOME $ENV{HOME})
+endif()
+set(sdkVersion 2.3.1)
+set(toolchainVersion 15_2_Rel1)
+set(picotoolVersion 2.3.1)
+set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
+if (EXISTS ${picoVscode})
+    include(${picoVscode})
+endif()
+# ====================================================================================
+set(PICO_BOARD pico CACHE STRING "Board type")
+
 ################################################################################
 # micro T-Kernel 3.0 for the Raspberry Pi Pico W -- CMake build
 #
@@ -29,7 +45,8 @@
 # initialised:  git submodule update --init lib/tinyusb lib/cyw43-driver
 #
 # PICO_TOOLCHAIN_PATH is the root of the Arm GNU toolchain (the folder that
-# contains bin/).  If it is not set, arm-none-eabi-gcc is taken from PATH.
+# contains bin/).  If it is not set, the toolchain file checks common Pico SDK
+# install locations before falling back to arm-none-eabi-gcc on PATH.
 ################################################################################
 
 cmake_minimum_required(VERSION 3.20)

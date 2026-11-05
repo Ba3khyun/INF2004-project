@@ -15,11 +15,27 @@
 #ifdef CPU_RP2040
 
 #include <tk/tkernel.h>
+#include <tm/tmonitor.h> //ADDED
+
 #if TK_SUPPORT_SMP
 #include <tk/smp.h>
 #endif
 #include "../../i2c.h"
 #include "../../../include/dev_def.h"
+
+/* RP2040 free-running microsecond timer */
+#define I2C_TIMER_RAWL (*(volatile UW *)0x40054028UL)
+
+//ADDED: This global variable is used to store the time taken for I2C interrupts to be serviced. It can be used for debugging and performance monitoring.
+/* RP2040 SIO CPUID register: returns 0 or 1 */
+#define S4_DEBUG_CPUID (*(volatile UW *)0xD0000000UL)
+static volatile UW g_i2c_irq_core[DEV_I2C_UNITNM];
+
+// ADDED: This global variable is used to store the time taken for I2C interrupts to be serviced. It can be used for debugging and performance monitoring.
+static volatile UW g_i2c_irq_signal_us[DEV_I2C_UNITNM];
+/* ADDED: Timestamp after tk_set_flg() */
+static volatile UW g_i2c_irq_after_set_us[DEV_I2C_UNITNM];
+
 #if DEV_IIC_ENABLE
 /*
  *	i2c_rp2040.c
@@ -66,6 +82,7 @@ typedef struct {
 	UW	rdat_num;	// Number of receive data
 	UB	*sbuf;		// Send buffer
 	UB	*rbuf;		// Receive buffer
+	UW abort_source;  /* Diagnostic: I2C transmit-abort reason: ADDED */ 
 } T_I2C_LLDCB;
 LOCAL T_I2C_LLDCB	ll_devcb[DEV_I2C_UNITNM];
 
@@ -111,13 +128,15 @@ LOCAL void i2c_inthdr( UINT intno )
 	switch ( p_cb->state ) {
 	case I2C_STS_SEND:
 		if(i2c_sts & I2C_INT_TX_EMPTY) {
+			/* IRQ must not do serial logging: impacts 2 ms deadline. */
 			cmd = *(p_cb->sbuf)++ & I2C_DATA_CMD_DAT;
 			if(--(p_cb->sdat_num)) {
 				cmd |= I2C_DATA_CMD_CMD_WRITE;
 			} else {	// Last data
 				clr_w(I2C_INTR_MASK(unit), I2C_INT_TX_EMPTY);
 				if(p_cb->rdat_num) {
-					cmd |= I2C_DATA_CMD_CMD_WRITE | I2C_DATA_CMD_RESTART;
+					/* RESTART belongs on the FIRST READ command. */
+					cmd |= I2C_DATA_CMD_CMD_WRITE;
 					p_cb->state = I2C_STS_START;
 				} else {
 					cmd |= I2C_DATA_CMD_CMD_WRITE | I2C_DATA_CMD_STOP;
@@ -135,6 +154,9 @@ LOCAL void i2c_inthdr( UINT intno )
 			*(p_cb->rbuf)++ = in_w(I2C_DATA_CMD(unit)) & I2C_DATA_CMD_DAT;
 			if(--(p_cb->rdat_num)) {
 				cmd = I2C_DATA_CMD_CMD_READ;
+				if (p_cb->rdat_num == 1U) {
+					cmd |= I2C_DATA_CMD_STOP; /* Last byte in multi-byte read */
+				}
 				out_w(I2C_DATA_CMD(unit), cmd);
 			} else {	// Last data
 				clr_w(I2C_INTR_MASK(unit), I2C_INT_RX_FULL);
@@ -154,21 +176,50 @@ LOCAL void i2c_inthdr( UINT intno )
 		out_w(I2C_INTR_MASK(unit), 0);	// Mask all innterrupts
 		p_cb->ioerr = E_IO;
 		p_cb->err_reason = i2c_sts;
+		
+		//ADDED
+		if (i2c_sts & I2C_INT_TX_ABRT) {
+			p_cb->abort_source = in_w(I2C_TX_ABRT_SOURCE(unit));
+		}
+
 		p_cb->state = I2C_STS_STOP;
 		wup = TRUE;
 	}
 
 	(void)in_w(I2C_CLR_INTR(unit));	// Clear all Interrupt Registers
 	ClearInt(intno);		// Clear interrupt
-
-	if(wup) {
+	
+	// CHANGED THIS WHOLE SECTION: The original code was waking up the waiting task before releasing the spinlock, which could lead to priority inversion or deadlocks. The revised code releases the spinlock first, then wakes up the waiting task. This ensures that the waiting task can run without being blocked by the spinlock.
+	if (wup) {
+		/* Stop further interrupts from this I2C unit */
 		out_w(I2C_INTR_MASK(unit), 0);
-		(void)tk_set_flg(p_cb->done_flgid, 1);
+
+		/* Record completion details while locked */
+		g_i2c_irq_core[unit] = S4_DEBUG_CPUID;
+		g_i2c_irq_signal_us[unit] = I2C_TIMER_RAWL;
 	}
+
+	/*
+	* IMPORTANT:
+	* Release the driver spinlock and restore interrupt state
+	* BEFORE waking the waiting task.
+	*/
 	I2C_UNLOCK(unit, intsts);
+
+	if (wup) {
+		/* Kernel can now request the appropriate dispatch */
+		(void)tk_set_flg(p_cb->done_flgid, 1);
+
+		g_i2c_irq_after_set_us[unit] = I2C_TIMER_RAWL;
+	}
+	// ^^^^
+
 }
 /*----------------------------------------------------------------------
  * Execution of communication
+ * Function chooses what to do based on p_cb->sdat_num:
+ 	- If sdat_num > 0, it enters the send phase.
+ 	- If sdat_num == 0, it enters the receive phase and issues a read command.
  */
 LOCAL ER i2c_trans(INT unit, T_I2C_LLDCB *p_cb)
 {
@@ -177,30 +228,90 @@ LOCAL ER i2c_trans(INT unit, T_I2C_LLDCB *p_cb)
 	UINT	flgptn;
 	ER	err;
 
+	//ADDED
+	UW phase_start;
+	UW phase_end;
+	UW irq_stamp;
+	static UW debug_count = 0U;
+	UW irq_after_set;
+	UW task_core_before;
+	UW task_core_after;
+
 	p_cb->ioerr = err = E_OK;
 
-	out_w(I2C_TAR(unit), p_cb->sadr & I2C_TAR_7BIT_ADR);	// Set slave address
-	out_w(I2C_INTR_MASK(unit), 0);				// Mask all innterrupts
-	out_w(I2C_ENABLE(unit), I2C_ENABLE_ENABLE);		// Enable I2C
-	(void)in_w(I2C_CLR_INTR(unit));				// Clear all Interrupt Registers
-	in_w(I2C_CLR_TX_ABRT(unit));				// Clear Transmit abort
+	p_cb->abort_source = 0;
+	p_cb->err_reason = 0;
+
+	// ADDED: Clear the abort_source at the start of a transaction
+	/* Mask interrupts and disable the controller first */
+	out_w(I2C_INTR_MASK(unit), 0);
+	out_w(I2C_ENABLE(unit), 0);
+
+	/* Wait briefly for the controller to become disabled. */
+	{
+		UW timeout = 10000U;
+
+		while ((in_w(I2C_ENABLE_STATUS(unit)) & 1U) != 0U) {
+			if (--timeout == 0U) {
+				return E_IO;
+			}
+		}
+	}
+
+	/* Clear pending interrupt and abort conditions */
+	(void)in_w(I2C_CLR_INTR(unit));
+	(void)in_w(I2C_CLR_TX_ABRT(unit));
+
+	/* Set target address while the controller is disabled */
+	out_w(I2C_TAR(unit), p_cb->sadr & I2C_TAR_7BIT_ADR);
+
+	/* Enable the controller */
+	out_w(I2C_ENABLE(unit), I2C_ENABLE_ENABLE);
+
+	// p_cb->ioerr = err = E_OK;
+	// out_w(I2C_TAR(unit), p_cb->sadr & I2C_TAR_7BIT_ADR);	// Set slave address
+	// out_w(I2C_INTR_MASK(unit), 0);				// Mask all innterrupts
+	// out_w(I2C_ENABLE(unit), I2C_ENABLE_ENABLE);		// Enable I2C
+
+	/* Per-transaction printing removed. */
 
 	while (p_cb->state != I2C_STS_STOP) {
 		I2C_LOCK(unit, imask);
 		(void)tk_clr_flg(p_cb->done_flgid, 0);
-		if(p_cb->sdat_num > 0 ) {	/* Send */
-			set_w(I2C_INTR_MASK(unit), I2C_INT_TX_EMPTY|I2C_INT_ERROR);
-			p_cb->state = I2C_STS_SEND;
-		} else {			/* Receive */
-			if(p_cb->rdat_num > 1) {
+		// CHANGED: The send phase is entered if there are bytes to send. If there are no bytes to send, the receive phase is entered.
+		
+		g_i2c_irq_signal_us[unit] = 0U;
+		g_i2c_irq_after_set_us[unit] = 0U; //ADDED: Clear the interrupt timing variables at the start of a transaction
+		phase_start = I2C_TIMER_RAWL;
+
+		if(p_cb->sdat_num > 0U) {	/* Send */
+		/* Set state before enabling the interrupt. */
+		p_cb->state = I2C_STS_SEND;
+
+		set_w(I2C_INTR_MASK(unit),
+			I2C_INT_TX_EMPTY | I2C_INT_ERROR);
+		
+		//CHANGED: 
+		} else {    /* Receive */
+			if (p_cb->rdat_num > 1U) {
 				cmd = I2C_DATA_CMD_CMD_READ;
-			} else {	// Last data
+			} else {
 				cmd = I2C_DATA_CMD_CMD_READ | I2C_DATA_CMD_STOP;
 			}
-			set_w(I2C_INTR_MASK(unit), I2C_INT_RX_FULL|I2C_INT_ERROR);
-			out_w(I2C_DATA_CMD(unit), cmd);				
+
+			if (p_cb->sbuf != NULL) {
+				cmd |= I2C_DATA_CMD_RESTART;
+			}
+
+			/* Set state BEFORE enabling interrupts or issuing commands. */
 			p_cb->state = I2C_STS_RECV;
+
+			set_w(I2C_INTR_MASK(unit),
+				I2C_INT_RX_FULL | I2C_INT_ERROR);
+
+			out_w(I2C_DATA_CMD(unit), cmd);
 		}
+		// ^^^
 		I2C_UNLOCK(unit, imask);
 
 		if(p_cb->ioerr != E_OK) {
@@ -208,9 +319,42 @@ LOCAL ER i2c_trans(INT unit, T_I2C_LLDCB *p_cb)
 			break;
 		}
 
+		// ADDED: Measure the time spent waiting for the transaction to complete, and print a diagnostic message if it takes longer than 1000 microseconds.
+		task_core_before = S4_DEBUG_CPUID;
 		err = tk_wai_flg(p_cb->done_flgid, 1,
-				 TWF_ORW | TWF_BITCLR, &flgptn,
-				 ll_devdat[unit].timout);
+						TWF_ORW | TWF_BITCLR,
+						&flgptn,
+						ll_devdat[unit].timout);
+
+		task_core_after = S4_DEBUG_CPUID;
+
+		/* Capture timing after the SINGLE wait */
+		phase_end = I2C_TIMER_RAWL;
+		irq_stamp = g_i2c_irq_signal_us[unit];
+		irq_after_set = g_i2c_irq_after_set_us[unit];
+
+		// ADDED
+		if (++debug_count >= 100U) {
+			debug_count = 0U;
+
+			if ((irq_stamp != 0U) &&
+				(irq_after_set != 0U) &&
+				(phase_end >= irq_after_set)) {
+
+				tm_printf((UB *)
+					"[I2C CORE] irq_core=%lu task_before=%lu task_after=%lu "
+					"irq=%lu setflg=%lu sched=%lu err=%d\n",
+					(unsigned long)g_i2c_irq_core[unit],
+					(unsigned long)task_core_before,
+					(unsigned long)task_core_after,
+					(unsigned long)(irq_stamp - phase_start),
+					(unsigned long)(irq_after_set - irq_stamp),
+					(unsigned long)(phase_end - irq_after_set),
+					(INT)err);
+			}
+		}
+		// ^^^^
+
 		if ( err < E_OK ) {
 			I2C_LOCK(unit, imask);
 			out_w(I2C_INTR_MASK(unit), 0);
@@ -220,6 +364,15 @@ LOCAL ER i2c_trans(INT unit, T_I2C_LLDCB *p_cb)
 		}
 		else err = p_cb->ioerr;
 	}
+
+	/* Error diagnostic for IMU candidate addresses only. */
+	if ((err < E_OK) && (unit == DEV_I2C_0) &&
+	    ((p_cb->sadr == 0x18U) || (p_cb->sadr == 0x19U) ||
+	     (p_cb->sadr == 0x1DU) || (p_cb->sadr == 0x1EU))) {
+		tm_printf((UB*)"I2C0 addr=0x%02X err=%d ABORT=0x%08X intr=0x%08X\n",
+		          (UINT)p_cb->sadr, err, p_cb->abort_source, p_cb->err_reason);
+	}
+
 	out_w(I2C_ENABLE(unit), 0);				// Disable I2C
 
 	return err;
@@ -236,6 +389,7 @@ Inline void set_com_start(UW unit, UW sadr, UW sdat_num, UW rdat_num, UB *sbuf, 
 	ll_devcb[unit].rdat_num	= rdat_num;	/* Number of receive data */
 	ll_devcb[unit].sbuf	= sbuf;		/* Send buffer */
 	ll_devcb[unit].rbuf	= rbuf;		/* Receive buffer */
+	ll_devcb[unit].abort_source = 0; // ADDED: clear abort_source at the start of a transaction
 }
 
 
@@ -292,11 +446,38 @@ EXPORT W dev_i2c_llctl( UW unit, INT cmd, UW p1, UW p2, UW *pp)
 	case LLD_I2C_EXEC:
 		set_com_start( unit, p_ex->sadr, p_ex->snd_size, p_ex->rcv_size, p_ex->snd_data, p_ex->rcv_data);
 		err = i2c_trans(unit, &ll_devcb[unit]);
+		if (err < E_OK) { //ADDED: print error message for debugging
+			//
+		}
 		if(err >= E_OK) err = p_ex->snd_size + p_ex->rcv_size;
 		break;
 	}
 	
 	return (W)err;
+}
+
+/*----------------------------------------------------------------------
+ * Get I2C transmit-abort reason
+ * Returns the value of the TX_ABRT_SOURCE register for the specified unit.
+ * If the unit number is invalid, returns 0xFFFFFFFF. ADDED
+ */
+EXPORT UW dev_i2c_get_abort_source(UW unit)
+{
+    if (unit >= DEV_I2C_UNITNM) {
+        return 0xFFFFFFFF;
+    }
+
+    return ll_devcb[unit].abort_source;
+}
+
+// ADDED
+EXPORT UW dev_i2c_get_error_reason(UW unit)
+{
+    if (unit >= DEV_I2C_UNITNM) {
+        return 0xFFFFFFFF;
+    }
+
+    return ll_devcb[unit].err_reason;
 }
 
 /*----------------------------------------------------------------------

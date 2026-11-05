@@ -104,13 +104,6 @@ EXPORT void startup_clock(ATR clkatr)
 
 	out_w(CLK_REF+CLK_x_DIV, div);
 
-	/* Watchdog tick = clk_ref (XOSC, 12 MHz) / 12 = 1 MHz.  Without this
-	   the TIMER block runs from whatever the previous boot stage left:
-	   correct right after a BOOTSEL flash (the ROM bootloader sets it),
-	   but ~43x too slow after a power cycle, which stretched every
-	   time_us_64() delay in the radio driver. */
-	out_w(WDOG_TICK, WDOG_TICK_ENABLE | XOSC_MHz);
-
 	/* CLK SYS settings */
 	div = (TMCLK_MHz << 8) / TMCLK_MHz;
 	if (div > in_w(CLK_SYS+CLK_x_DIV)) out_w(CLK_SYS+CLK_x_DIV, div);

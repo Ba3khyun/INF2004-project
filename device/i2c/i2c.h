@@ -48,6 +48,8 @@ typedef struct {
  */
 IMPORT W dev_i2c_llctl( UW, INT, UW, UW, UW*);		/* Low-Level device control */
 IMPORT ER dev_i2c_llinit( T_I2C_DCB *p_dcb);	/* Low-level device initialization */
+IMPORT UW dev_i2c_get_abort_source(UW unit);	// ADDED: Diagnostic: I2C transmit-abort reason
+IMPORT UW dev_i2c_get_error_reason(UW unit);	// ADDED: Diagnostic: I2C error reason
 
 typedef enum {
 	LLD_I2C_OPEN,
