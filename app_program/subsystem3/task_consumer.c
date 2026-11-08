@@ -7,6 +7,7 @@
 #include "../subsystem2/subsystem2.h"   /* IF-01/02: SAMPLE_MSG */
 #include "../subsystem2/motion_control.h"   /* Subsystem 2 Motor Control API */
 #include "../subsystem4/subsystem4.h"   /* IF-03: mbf_summary */
+#include "../vehicle_controller/vehicle_controller.h" /* passive line-intent bridge */
 
 #define LINE_RECOVERY_ARC_MS 500u
 #define RIGHT_LINE_LOSS_PIVOT_MS 150u
@@ -284,7 +285,7 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 					if (right_line_correction_active) {
 						tm_printf((UB*)"[STEERING] Right correction lost the line; trying a brief sharp right pivot.\r\n");
 						line_lost_start_time = now;
-						er = motion_cmd_post(MC_CMD_DRIVE_RIGHT);
+						er = vehicle_controller_line_motion_post(MC_CMD_DRIVE_RIGHT, right_line || center_line);
 						if (er == E_OK) {
 							last_line_motion_command = MC_CMD_DRIVE_RIGHT;
 						}
@@ -294,7 +295,7 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 
 					tm_printf((UB*)"[STEERING] Line lost; starting gentle left recovery arc.\r\n");
 					line_lost_start_time = now;
-					er = motion_cmd_post(MC_CMD_STEER_LEFT);
+					er = vehicle_controller_line_motion_post(MC_CMD_STEER_LEFT, right_line || center_line);
 					if (er == E_OK) {
 						last_line_motion_command = MC_CMD_STEER_LEFT;
 					}
@@ -311,8 +312,8 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 					line_motion_command = MC_CMD_STEER_RIGHT;
 				} 
 
-				if (line_motion_command != last_line_motion_command || motion_is_idle()) {
-					er = motion_cmd_post(line_motion_command);
+				{ /* Refresh VC intent while following line (stale timeout). */
+					er = vehicle_controller_line_motion_post(line_motion_command, right_line || center_line);
 					if (er == E_OK) {
 						last_line_motion_command = line_motion_command;
 					}
@@ -387,9 +388,8 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 				} else if (right_line_correction_active &&
 					   (UW)(now - line_lost_start_time) <
 						   RIGHT_LINE_LOSS_PIVOT_MS) {
-					if (last_line_motion_command != MC_CMD_DRIVE_RIGHT ||
-					    motion_is_idle()) {
-						er = motion_cmd_post(MC_CMD_DRIVE_RIGHT);
+					{ /* Refresh VC recovery intent. */
+						er = vehicle_controller_line_motion_post(MC_CMD_DRIVE_RIGHT, right_line || center_line);
 						if (er == E_OK) {
 							last_line_motion_command = MC_CMD_DRIVE_RIGHT;
 						}
@@ -398,7 +398,7 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 					right_line_correction_active = false;
 					tm_printf((UB*)"[STEERING] Brief right pivot did not reacquire the line; switching to left recovery.\r\n");
 					line_lost_start_time = now;
-					er = motion_cmd_post(MC_CMD_STEER_LEFT);
+					er = vehicle_controller_line_motion_post(MC_CMD_STEER_LEFT, right_line || center_line);
 					if (er == E_OK) {
 						last_line_motion_command = MC_CMD_STEER_LEFT;
 					}
@@ -406,7 +406,7 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 					   LINE_RECOVERY_ARC_MS &&
 					   last_line_motion_command != MC_CMD_DRIVE_LEFT) {
 					tm_printf((UB*)"[STEERING] Line not found; escalating to sharper left pivot.\r\n");
-					er = motion_cmd_post(MC_CMD_DRIVE_LEFT);
+					er = vehicle_controller_line_motion_post(MC_CMD_DRIVE_LEFT, right_line || center_line);
 					if (er == E_OK) {
 						last_line_motion_command = MC_CMD_DRIVE_LEFT;
 					}
@@ -418,6 +418,11 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 				break;
 		}
 
+		/* Heartbeat: keep line-recovery intent fresh while searching.
+		 * No actual motion commands are sent in Phase 3. */
+		if (current_state == STATE_LOST_LINE && last_line_motion_command != 0u) {
+			(void)vehicle_controller_line_motion_post(last_line_motion_command, right_line || center_line);
+		}
 		tk_dly_tsk(1);
 	}
 }

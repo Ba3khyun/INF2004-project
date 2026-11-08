@@ -15,12 +15,10 @@ EXPORT ID mbf_summary = -1;
 EXPORT ID flg_events  = -1;
 EXPORT ID alm_monitor = -1;
 
-/* Objects owned by the IMU subsystem. */
+/* Objects owned only by Subsystem 4 */
 EXPORT ID flg_imu     = -1;
 EXPORT ID cyc_imu     = -1;
 EXPORT ID mbf_imu_evt = -1;
-EXPORT ID flg_faults  = -1;   /* TODO: move to safety_handler.c when it exists */
-EXPORT ID flg_safety  = -1;   /* TODO: move to safety_handler.c when it exists */
 EXPORT ID s4_i2c_dev  = -1;
 
 EXPORT ER subsystem4_init(void)
@@ -59,14 +57,6 @@ EXPORT ER subsystem4_init(void)
 	cflg.iflgptn = 0;
 	flg_imu = tk_cre_flg(&cflg);
 	if (flg_imu < E_OK) { return (ER)flg_imu; }
-
-	/* ---- shared fault mask and safety events (several tasks may wait) ---- */
-	cflg.flgatr = TA_TFIFO | TA_WMUL;
-	cflg.iflgptn = 0;
-	flg_faults = tk_cre_flg(&cflg);
-	if (flg_faults < E_OK) { return (ER)flg_faults; }
-	flg_safety = tk_cre_flg(&cflg);
-	if (flg_safety < E_OK) { return (ER)flg_safety; }
 
 	/* ---- 10 ms cyclic handler (started by the IMU task once the sensor is ready) ---- */
 	ccyc.cycatr = TA_HLNG;

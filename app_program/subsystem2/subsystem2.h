@@ -65,6 +65,9 @@ IMPORT ER	motion_cmd_post(UB cmd);
 /* TRUE only when the motion task is idle and no command is queued. */
 IMPORT BOOL	motion_is_idle(void);
 
+/* Cumulative forward/arc travel distance in millimetres. */
+IMPORT UW motion_get_distance_mm(void);
+
 /* Private to subsystem 2 */
 IMPORT void	motion_task(INT stacd, void *exinf);
 

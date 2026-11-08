@@ -42,7 +42,7 @@
 /* Speed telemetry (TQ_FIELD_SPEED, cm/s).  WHEEL_DIAMETER_CM is a
    placeholder: measure the wheel and correct it. */
 #define TELEM_PERIOD_MS 100u
-#define WHEEL_DIAMETER_CM 6.5f
+#define WHEEL_DIAMETER_CM 6.2f // changed from 6.5f to 6.2f to match the actual wheel diameter
 
 /* ========================
  * Motion states
@@ -81,6 +81,18 @@ LOCAL UW tlm_time = 0u;
 LOCAL UW tlm_left = 0u;
 LOCAL UW tlm_right = 0u;
 
+/* Cumulative encoder distance for Buddy 4's IMU */
+LOCAL volatile UW g_motion_distance_mm = 0U;
+LOCAL float g_motion_distance_total = 0.0f;
+LOCAL UW g_distance_prev_left = 0U;
+LOCAL UW g_distance_prev_right = 0U;
+
+/* Read-only interface for Subsystem 4 */
+EXPORT UW motion_get_distance_mm(void)
+{
+    return g_motion_distance_mm;
+}
+
 /* Monotonic milliseconds; differences are wrap-safe as UW. */
 LOCAL UW now_ms(void)
 {
@@ -89,6 +101,55 @@ LOCAL UW now_ms(void)
 	tk_get_otm(&t);
 	return t.lo;
 }
+
+/*
+ * Provisional encoder-distance bridge.
+ * Motion task is the only writer.
+ * IMU task reads the aligned 32-bit published distance.
+ *
+ * Assumes wheel diameter of 6.5 cm and the encoder
+ * pulses/revolution configured in motion_control.c.
+ */
+LOCAL void update_encoder_distance(void)
+{
+    UW left_now;
+    UW right_now;
+    UW left_delta;
+    UW right_delta;
+    float left_mm;
+    float right_mm;
+
+    left_now = encoder_get_left_count();
+    right_now = encoder_get_right_count();
+
+    left_delta = left_now - g_distance_prev_left;
+    right_delta = right_now - g_distance_prev_right;
+
+    g_distance_prev_left = left_now;
+    g_distance_prev_right = right_now;
+
+    /*
+     * Temporary policy: count forward/arc travel only.
+     * Do not count pivot turns or reverse movements.
+     */
+    if ((motion_state == MOTION_FORWARD) ||
+        (motion_state == MOTION_ARC_LEFT) ||
+        (motion_state == MOTION_ARC_RIGHT)) {
+
+        left_mm = encoder_left_distance_cm(
+            left_delta, WHEEL_DIAMETER_CM) * 10.0f;
+
+        right_mm = encoder_right_distance_cm(
+            right_delta, WHEEL_DIAMETER_CM) * 10.0f;
+
+        g_motion_distance_total +=
+            (left_mm + right_mm) * 0.5f;
+
+        g_motion_distance_mm =
+            (UW)(g_motion_distance_total + 0.5f);
+    }
+}
+
 
 LOCAL INT milli_rev(float rev)
 {
@@ -476,6 +537,12 @@ EXPORT void motion_task(INT stacd, void *exinf)
 		CHECK(er, "motion_task hardware init");
 		tk_ext_tsk();
 	}
+	
+	g_distance_prev_left = encoder_get_left_count();
+	g_distance_prev_right = encoder_get_right_count();
+	g_motion_distance_mm = 0U;
+	g_motion_distance_total = 0.0f;
+
 
 	tm_printf((UB *)"motion: Buddy 2 Motion Control ready (motion_cmd_q)\n");
 	tm_printf((UB *)"motion:   F = forward, L = left, R = right,"
@@ -494,6 +561,9 @@ EXPORT void motion_task(INT stacd, void *exinf)
 			motion_ticks_missed += (UW)self.wupcnt; /* overrun */
 			(void)tk_can_wup(TSK_SELF);
 		}
+
+		/* Update cumulative distance from the previous control period. */
+		update_encoder_distance();
 
 		/* Check safety before processing queued movement commands. */
 		check_safety();

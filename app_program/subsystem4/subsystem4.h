@@ -40,8 +40,6 @@
 IMPORT ID flg_imu;       /* tick + reinit requests for the IMU task          */
 IMPORT ID cyc_imu;       /* 10 ms cyclic handler                             */
 IMPORT ID mbf_imu_evt;   /* imu_evt_q: uint16_t messages, depth 8            */
-IMPORT ID flg_faults;    /* shared team fault mask (event flag, app_data.h)  */
-IMPORT ID flg_safety;    /* events for the Emergency/Safety task             */
 IMPORT ID s4_i2c_dev;    /* device ID of "iica" (I2C0)                       */
 
 /* ---- read-only status for other subsystems and tests ---- */

@@ -147,11 +147,21 @@ static void enter_fault(UW flt_bit)
 {
     g.state = S4_ST_FAULT;
     imu_hump_reset(&g.hump);
-    if (flt_bit != 0U) {
-        (void)tk_set_flg(flg_faults, flt_bit);
-        post_evt(S4_EVT_IMU_FAULT, 0U, 0U);
+
+    /*
+     * The team has reserved only FLT_IMU_I2C
+     * for an IMU communication failure.
+     */
+    if (flt_bit == FLT_IMU_I2C) {
+        (void)tk_set_flg(flg_fault, FLT_IMU_I2C);
     }
-    tm_printf((UB*)"IMU: -> FAULT (fault bit 0x%X)\n", (UINT)flt_bit);
+
+    /* Always tell the Vehicle Controller about an IMU fault. */
+    post_evt(S4_EVT_IMU_FAULT, 0U, 0U);
+
+    tm_printf((UB*)
+        "IMU: -> FAULT (reason=0x%X)\n",
+        (UINT)flt_bit);
 }
 
 static void start_calibration(void)
@@ -166,18 +176,28 @@ static void start_calibration(void)
 
 static void try_reinit(void)
 {
-    UINT keep = (UINT)(~(FLT_IMU_I2C | FLT_IMU_CALIB | FLT_IMU_RANGE));
     ER er;
 
-    (void)tk_clr_flg(flg_faults, keep);          /* clear only the IMU fault bits */
     er = imu_drv_init(s4_i2c_dev);
+
     if (er != E_OK) {
-        (void)tk_set_flg(flg_faults, FLT_IMU_I2C);
-        tm_printf((UB*)"IMU: reinit failed (err=%d), staying in FAULT\n", er);
+        (void)tk_set_flg(flg_fault, FLT_IMU_I2C);
+
+        tm_printf((UB*)
+            "IMU: reinit failed (err=%d)\n",
+            (INT)er);
         return;
     }
+
+    /* Clear only the IMU-owned I2C fault bit. */
+    (void)tk_clr_flg(
+        flg_fault,
+        (UINT)(~FLT_IMU_I2C));
+
     start_calibration();
-    tm_printf((UB*)"IMU: reinit OK, calibrating\n");
+
+    tm_printf((UB*)
+        "IMU: reinit OK, calibrating\n");
 }
 
 static void handle_calibration(const float f[3])
@@ -201,7 +221,8 @@ static void handle_calibration(const float f[3])
               (r == IMU_CAL_UNSTEADY) ? "car moved" : "|a| not 1 g",
               (UINT)g.cal_attempts, (UINT)S4_CAL_MAX_ATTEMPTS);
     if (g.cal_attempts >= S4_CAL_MAX_ATTEMPTS) {
-        enter_fault(FLT_IMU_CALIB);
+        /* Calibration failure has no dedicated bit in the team mask. */
+        enter_fault(0U);
     } else {
         imu_cal_reset(&g.cal);
     }
@@ -222,7 +243,11 @@ static void handle_monitoring(const float f[3], float mag_g, float delta_mm)
     float peak = 0.0f;
 
     if (shock == IMU_SHOCK_CRITICAL) {
-        (void)tk_set_flg(flg_safety, SAF_COLLISION);      /* Safety latches the stop */
+        /* Report collision through the team fault mask. */
+        (void)tk_set_flg(flg_fault, FLT_COLLISION);
+
+        /* Request emergency stop from the Safety Handler. */
+        (void)tk_set_flg(flg_safety, SAFETY_REQ_COLLISION);
         g.state = S4_ST_FAULT;
         imu_hump_reset(&g.hump);
         tm_printf((UB*)"IMU: CRITICAL shock %d mg -> collision flag, FAULT\n", (INT)(mag_g * 1000.0f));
@@ -403,10 +428,17 @@ EXPORT void imu_task(INT stacd, void *exinf)
     g.heading_deg = 0.0f;
     start_calibration();
 
+    
     er = imu_drv_init(s4_i2c_dev);
+
+    tm_printf((UB*)
+        "[IMU INIT] imu_drv_init returned %d\n",
+        (INT)er);
+
     if (er != E_OK) {
         enter_fault(FLT_IMU_I2C);
     }
+
     (void)tk_sta_cyc(cyc_imu);
 
     for (;;) {

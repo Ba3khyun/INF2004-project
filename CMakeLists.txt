@@ -229,6 +229,11 @@ file(GLOB APP_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/app_program/*.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/app_program/*/*.c")
 
+file(GLOB SAFETY_TEST_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/app_program/safety_handler/tests/*.c")
+
+list(APPEND APP_SOURCES ${SAFETY_TEST_SOURCES})
+
 set(KERNEL_SOURCES
     kernel/inittask/inittask.c
     kernel/sysinit/sysinit.c

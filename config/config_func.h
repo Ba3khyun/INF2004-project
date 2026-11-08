@@ -152,4 +152,9 @@
 #define USE_FUNC_TD_REF_SYS
 #define USE_FUNC_TD_RDY_QUE
 
+/* Bitmap helpers required when CNF_MAX_TSKPRI exceeds 32. */
+#define USE_FUNC_TSTDLIB_BITCLR
+#define USE_FUNC_TSTDLIB_BITSET
+#define USE_FUNC_TSTDLIB_BITSEARCH1
+
 #endif /* _CONFIG_FUNC_H_ */

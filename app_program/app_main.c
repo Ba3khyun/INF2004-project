@@ -54,6 +54,12 @@
  */
 
 #include "app.h"
+#include "vehicle_controller/vehicle_controller.h"
+#include "safety_handler/safety_handler.h"
+
+#if APP_TEST
+#include "safety_handler/tests/safety_test_suite.h"
+#endif
 
 /*
  * Create and start one task (declared in app.h for every subsystem).
@@ -95,6 +101,26 @@ EXPORT ID app_start_task(FP entry, PRI pri, UW prc, const char *name)
 	return tid;
 }
 
+/* Stop boot before starting any subsystem task if object creation fails.
+ * Kept local to app_main.c; other uses of CHECK() remain unchanged.
+ */
+static void app_require_init(const char *name, ER er)
+{
+    if (er >= E_OK) {
+        return;
+    }
+
+    tm_printf((UB *)
+        "FATAL INIT: %s failed (err=%d). "
+        "Skipping subsystem start phase.\n",
+        name, (INT)er);
+
+    /* Remain asleep; never proceed to starting application tasks. */
+    for (;;) {
+        (void)tk_slp_tsk(TMO_FEVR);
+    }
+}
+
 EXPORT INT usermain(void)
 {
 	T_RVER	ver;
@@ -110,12 +136,20 @@ EXPORT INT usermain(void)
 	tm_printf((UB*)"single-core build\n");
 #endif
 
-	/* Phase 1: every subsystem creates its kernel objects */
-	CHECK(subsystem1_init(), "subsystem1_init");
-	CHECK(subsystem2_init(), "subsystem2_init");
-	CHECK(subsystem3_init(), "subsystem3_init");
-	CHECK(subsystem4_init(), "subsystem4_init");
-	CHECK(subsystem5_init(), "subsystem5_init");
+
+	/* Phase 1: create all kernel objects.
+	* Do not start application tasks if any initialization fails.
+	*/
+	app_require_init("app_shared_init", app_shared_init());
+
+	app_require_init("subsystem1_init", subsystem1_init());
+	app_require_init("subsystem2_init", subsystem2_init());
+	app_require_init("subsystem3_init", subsystem3_init());
+	app_require_init("subsystem4_init", subsystem4_init());
+	app_require_init("subsystem5_init", subsystem5_init());
+
+	app_require_init("safety_handler_init", safety_handler_init());
+	app_require_init("vehicle_controller_init", vehicle_controller_init());
 
 	/* Phase 2: every subsystem starts its tasks */
 	CHECK(subsystem1_start(), "subsystem1_start");
@@ -124,19 +158,24 @@ EXPORT INT usermain(void)
 	CHECK(subsystem4_start(), "subsystem4_start");
 	CHECK(subsystem5_start(), "subsystem5_start");
 
+	CHECK(safety_handler_start(), "safety_handler_start");
+	CHECK(vehicle_controller_start(), "vehicle_controller_start");
+
 	tm_printf((UB*)"all subsystems started\n\n");
 
 #if APP_TEST
-	/* Test build (make TEST=1): run every subsystem's tests in turn,
-	   here in the initial task, while the system is running.  Tests may
-	   call tk_dly_tsk() to let the other tasks work for a while. */
-	tm_printf((UB*)"[TEST] === test run start ===\n");
-	subsystem1_test();
-	subsystem2_test();
-	subsystem3_test();
-	subsystem4_test();
-	subsystem5_test();
-	tm_printf((UB*)"[TEST] === test run end ===\n");
+    tm_printf((UB*)"[TEST] === test run start ===\n");
+
+    subsystem1_test();
+    subsystem2_test();
+    subsystem3_test();
+    subsystem4_test();
+    subsystem5_test();
+
+    /* Buddy 4 combined validation */
+    (void)safety_test_suite_run();
+
+    tm_printf((UB*)"[TEST] === test run end ===\n");
 #endif
 
 	/* Sleep forever.  Returning from usermain() would shut down. */

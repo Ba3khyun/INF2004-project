@@ -36,7 +36,7 @@
 #define	CNF_SYSTEMAREA_TOP	0	/* 0: Use system default address */
 #define CNF_SYSTEMAREA_END	0	/* 0: Use system default address */
 
-#define	CNF_MAX_TSKPRI		32	/* Task Max priority */
+#define CNF_MAX_TSKPRI 48  /* Allow Wi-Fi task priority 40 */
 
 #define CNF_TIMER_PERIOD	10	/* System timer period */
 

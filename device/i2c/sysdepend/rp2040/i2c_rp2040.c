@@ -23,6 +23,8 @@
 #include "../../i2c.h"
 #include "../../../include/dev_def.h"
 
+#define I2C_CORE_DEBUG_PRINT 0 // Added: Set to 1 to enable debug printing of I2C core information, 0 to disable.
+
 /* RP2040 free-running microsecond timer */
 #define I2C_TIMER_RAWL (*(volatile UW *)0x40054028UL)
 
@@ -334,25 +336,27 @@ LOCAL ER i2c_trans(INT unit, T_I2C_LLDCB *p_cb)
 		irq_after_set = g_i2c_irq_after_set_us[unit];
 
 		// ADDED
-		if (++debug_count >= 100U) {
-			debug_count = 0U;
+		#if I2C_CORE_DEBUG_PRINT
+			if (++debug_count >= 100U) {
+				debug_count = 0U;
 
-			if ((irq_stamp != 0U) &&
-				(irq_after_set != 0U) &&
-				(phase_end >= irq_after_set)) {
+				if ((irq_stamp != 0U) &&
+					(irq_after_set != 0U) &&
+					(phase_end >= irq_after_set)) {
 
-				tm_printf((UB *)
-					"[I2C CORE] irq_core=%lu task_before=%lu task_after=%lu "
-					"irq=%lu setflg=%lu sched=%lu err=%d\n",
-					(unsigned long)g_i2c_irq_core[unit],
-					(unsigned long)task_core_before,
-					(unsigned long)task_core_after,
-					(unsigned long)(irq_stamp - phase_start),
-					(unsigned long)(irq_after_set - irq_stamp),
-					(unsigned long)(phase_end - irq_after_set),
-					(INT)err);
+					tm_printf((UB *)
+						"[I2C CORE] irq_core=%lu task_before=%lu task_after=%lu "
+						"irq=%lu setflg=%lu sched=%lu err=%d\n",
+						(unsigned long)g_i2c_irq_core[unit],
+						(unsigned long)task_core_before,
+						(unsigned long)task_core_after,
+						(unsigned long)(irq_stamp - phase_start),
+						(unsigned long)(irq_after_set - irq_stamp),
+						(unsigned long)(phase_end - irq_after_set),
+						(INT)err);
+				}
 			}
-		}
+		#endif
 		// ^^^^
 
 		if ( err < E_OK ) {

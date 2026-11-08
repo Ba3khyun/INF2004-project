@@ -81,9 +81,11 @@ EXPORT void subsystem4_test(void)
 	TEST_CHECK("S4-U15", s4_snap_valid(snap) == 1U && s4_snap_state(snap) == S4_ST_MONITORING,
 		   "snapshot word is valid and reports MONITORING");
 
-	tk_ref_flg(flg_faults, &rflg);
-	TEST_CHECK("S4-U15b", (rflg.flgptn & (FLT_IMU_I2C | FLT_IMU_CALIB | FLT_IMU_RANGE)) == 0U,
-		   "no IMU fault bits set after start-up");
+	ER fault_er = tk_ref_flg(flg_fault, &rflg);
+	TEST_CHECK("S4-U15b",
+		fault_er == E_OK &&
+		(rflg.flgptn & (FLT_IMU_I2C | FLT_COLLISION)) == 0U,
+		"no IMU fault bits set after start-up");
 
 	/* ---- timing (NFR4.1 / NFR4.2) ---- */
 	mag_ovf_before = s4_stat_mag_overflow();
@@ -137,11 +139,17 @@ EXPORT void subsystem4_test(void)
 	cflg.iflgptn = 0;
 	flg_test = tk_cre_flg(&cflg);
 	if (flg_test >= E_OK) {
-		(void)tk_set_flg(flg_test, FLT_IMU_I2C | FLT_NO_ECHO);
-		(void)tk_clr_flg(flg_test, (UINT)(~FLT_IMU_I2C));   /* clear ONLY the IMU bit */
+		(void)tk_set_flg(
+			flg_test, FLT_IMU_I2C | FLT_LINE_LOST);
+
+		(void)tk_clr_flg(
+			flg_test, (UINT)(~FLT_IMU_I2C));
+
 		tk_ref_flg(flg_test, &rflg);
-		TEST_CHECK("S4-U19", rflg.flgptn == FLT_NO_ECHO,
-			   "tk_set_flg ORs and tk_clr_flg(~bit) clears only that bit");
+
+		TEST_CHECK("S4-U19",
+			rflg.flgptn == FLT_LINE_LOST,
+			"clearing IMU fault preserves another subsystem's bit");	
 		(void)tk_del_flg(flg_test);
 	} else {
 		TEST_CHECK("S4-U19", 0, "could not create the test event flag");
