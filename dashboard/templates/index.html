@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IS-06 Pico W Telemetry</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div>
+        <p class="eyebrow">IS-06 ROBOT</p>
+        <h1>Telemetry dashboard</h1>
+      </div>
+      <div id="connection" class="status offline">MQTT offline</div>
+    </header>
+
+    <section class="grid">
+      <article class="card hero">
+        <span class="label">Vehicle state</span>
+        <strong id="vehicle-state">Waiting for telemetry</strong>
+        <span id="last-seen" class="muted">No message received</span>
+      </article>
+      <article class="card">
+        <span class="label">Speed</span>
+        <strong id="speed">—</strong><span class="unit"> cm/s</span>
+      </article>
+      <article class="card">
+        <span class="label">Obstacle</span>
+        <strong id="obstacle">—</strong><span class="unit"> cm</span>
+      </article>
+      <article class="card">
+        <span class="label">Hump height</span>
+        <strong id="hump">—</strong><span class="unit"> mm</span>
+      </article>
+      <article class="card">
+        <span class="label">Sequence</span>
+        <strong id="sequence">—</strong>
+      </article>
+      <article class="card">
+        <span class="label">Uptime</span>
+        <strong id="uptime">—</strong><span class="unit"> s</span>
+      </article>
+    </section>
+
+    <section class="card details">
+      <div class="section-title">
+        <h2>Link details</h2>
+        <span id="message-count" class="muted">0 messages</span>
+      </div>
+      <dl>
+        <dt>Broker</dt><dd id="broker">Configured by dashboard</dd>
+        <dt>Retry count</dt><dd id="retry">—</dd>
+        <dt>Backlog</dt><dd id="backlog">—</dd>
+        <dt>Faults</dt><dd id="faults" class="faults">None reported</dd>
+      </dl>
+      <p id="error" class="error" hidden></p>
+    </section>
+  </main>
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>
