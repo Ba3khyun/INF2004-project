@@ -4,6 +4,7 @@
  */
 
 #include "subsystem3.h"
+#include "../app_debug.h"
 #include "../subsystem2/subsystem2.h"   /* IF-01/02: SAMPLE_MSG */
 #include "../subsystem2/motion_control.h"   /* Subsystem 2 Motor Control API */
 #include "../subsystem4/subsystem4.h"   /* IF-03: mbf_summary */
@@ -187,7 +188,9 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 	}
 	UW barcode_start_time = 0;
 	UW line_lost_start_time = 0;
+#if APP_DEBUG_S3_SENSOR
 	UW last_debug_print = current_time.lo;
+#endif
 	UB last_line_motion_command = 0;
 	bool right_line_correction_active = false;
 	bool right_line = false;
@@ -259,9 +262,10 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 			(center > THRESHOLD - LINE_THRESHOLD_HYSTERESIS) :
 			(center > THRESHOLD + LINE_THRESHOLD_HYSTERESIS);
 		
+#if APP_DEBUG_S3_SENSOR
 		int barcode_val_print = gpio_get_val(BARCODE_PIN) != 0 ? 1 : 0;
 
-		/// Print debug status once per second.
+		/* Periodic raw ADC/barcode readout: optional during integration. */
 		if ((UW)(now - last_debug_print) >= 1000) {
 			tm_printf((UB*)"RAW -> R: %4u [%s] | C: %4u [%s] | Barcode (GP2): %d | Threshold: %d\r\n",
 				      right, right_line ? "BLACK" : "WHITE",
@@ -269,6 +273,7 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 				      barcode_val_print, THRESHOLD);
 			last_debug_print = now;
 		}
+#endif
 
 		// Transition into barcode reading state as soon as ISR flags activity
 		if (barcode_scan_in_progress &&
@@ -283,7 +288,9 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 			case STATE_FOLLOWING_LINE:
 				if (!right_line && !center_line) {
 					if (right_line_correction_active) {
+#if APP_DEBUG_S3_STEERING
 						tm_printf((UB*)"[STEERING] Right correction lost the line; trying a brief sharp right pivot.\r\n");
+#endif
 						line_lost_start_time = now;
 						er = vehicle_controller_line_motion_post(MC_CMD_DRIVE_RIGHT, right_line || center_line);
 						if (er == E_OK) {
@@ -293,7 +300,9 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 						break;
 					}
 
+#if APP_DEBUG_S3_STEERING
 					tm_printf((UB*)"[STEERING] Line lost; starting gentle left recovery arc.\r\n");
+#endif
 					line_lost_start_time = now;
 					er = vehicle_controller_line_motion_post(MC_CMD_STEER_LEFT, right_line || center_line);
 					if (er == E_OK) {
@@ -382,7 +391,9 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 			case STATE_LOST_LINE:
 				if (right_line || center_line) {
 					right_line_correction_active = false;
+#if APP_DEBUG_S3_STEERING
 					tm_printf((UB*)"[STEERING] Line reacquired; resuming line following.\r\n");
+#endif
 					last_line_motion_command = 0;
 					current_state = STATE_FOLLOWING_LINE;
 				} else if (right_line_correction_active &&
@@ -396,7 +407,9 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 					}
 				} else if (right_line_correction_active) {
 					right_line_correction_active = false;
+#if APP_DEBUG_S3_STEERING
 					tm_printf((UB*)"[STEERING] Brief right pivot did not reacquire the line; switching to left recovery.\r\n");
+#endif
 					line_lost_start_time = now;
 					er = vehicle_controller_line_motion_post(MC_CMD_STEER_LEFT, right_line || center_line);
 					if (er == E_OK) {
@@ -405,7 +418,9 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 				} else if ((UW)(now - line_lost_start_time) >=
 					   LINE_RECOVERY_ARC_MS &&
 					   last_line_motion_command != MC_CMD_DRIVE_LEFT) {
+#if APP_DEBUG_S3_STEERING
 					tm_printf((UB*)"[STEERING] Line not found; escalating to sharper left pivot.\r\n");
+#endif
 					er = vehicle_controller_line_motion_post(MC_CMD_DRIVE_LEFT, right_line || center_line);
 					if (er == E_OK) {
 						last_line_motion_command = MC_CMD_DRIVE_LEFT;

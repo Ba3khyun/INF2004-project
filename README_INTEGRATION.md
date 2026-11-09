@@ -273,10 +273,8 @@ The suite includes software safety policy/bridge and VC scenario checks, plus **
 ## 9. Repository documentation and collaboration
 
 - **`README.md` (this file):** implementation, build, verified changes across versions, test results and known limitations.
-- **`TEAM.md`:** team-owned register of subsystems, pins, peripherals, priorities and shared interface IDs. **Keep it separately**; update outdated template rows together rather than replacing it with this README.
+- **`TEAM_INTEGRATIOn.md`:** team-owned register of subsystems, pins, peripherals, priorities and shared interface IDs. **Keep it separately**; update outdated template rows together rather than replacing it with this README.
 - **`testing/` and test logs:** evidence and regression history. The live Buddy 4 combined runner is `app_program/safety_handler/tests/safety_test_suite.c`.
 - **Pull requests / Git diffs:** review cross-owner edits. In particular, Buddy 3's changed steering handoff is a functional behavioral change, while Buddy 2's wheel-diameter adjustment needs owner confirmation.
 
 ---
-
-*Snapshot basis: `INF2004-project-branch-v1(1).zip`, available earlier `INF2004-project-branch-v2.zip`, and `INF2004-project-branch--v4.zip`. Features, diffs and limitations above reflect those snapshots and the supplied on-target serial logs; a newer local working tree may differ.*

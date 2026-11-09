@@ -11,6 +11,7 @@
 
 #include "../app.h"
 #include "../app_data.h"
+#include "../app_debug.h"
 
 /* ---- GY-511 hardware (I2C0, Grove 3).  Pins are set in
  *      device/i2c/sysdepend/rp2040/i2c_cnf_sysdep.h (GP4 SDA, GP5 SCL). ---- */
@@ -28,7 +29,7 @@
 #define S4_CAL_MAX_ATTEMPTS  3      /* NFR4.5: retries before FAULT                      */
 #define S4_SHOCK_HOLDOFF     20     /* cycles (200 ms) between minor-shock events        */
 #define S4_USE_BRAKE_COMP    0      /* 1 = subtract encoder acceleration from pitch      */
-#define S4_DEBUG_PRINT       1      /* 1 = status line on the console once per second    */ // CHANGED IMPT
+#define S4_DEBUG_PRINT       APP_DEBUG_IMU /* periodic 1 Hz IMU serial status */
 
 /* ---- kernel objects owned by subsystem 4 ---- */
 #define S4_FLG_TICK          0x01U  /* set by the 10 ms cyclic handler */
@@ -44,6 +45,13 @@ IMPORT ID s4_i2c_dev;    /* device ID of "iica" (I2C0)                       */
 
 /* ---- read-only status for other subsystems and tests ---- */
 IMPORT volatile UW s4_imu_snapshot;                 /* packed word, see app_data.h */
+/* Non-destructive event taps for Vehicle Controller. These do not drain
+ * imu_evt_q, whose 8 slots may be used by tests/other consumers.
+ * Start count changes on HUMP_START; done word packs the original 16-bit
+ * S4_EVT_HUMP_DONE message in bits 0..15 and a 16-bit generation in 16..31.
+ * A done word of 0 means no completed hump yet. Reads are 32-bit aligned. */
+IMPORT UW   s4_imu_hump_start_count(void);
+IMPORT UW   s4_imu_hump_done_word(void);
 IMPORT UW   s4_imu_get_snapshot(void);              /* one aligned 32-bit load     */
 IMPORT s4_imu_state_t s4_imu_state(void);
 IMPORT ER   s4_imu_request_reinit(void);            /* called after Safety reset   */
@@ -56,6 +64,16 @@ IMPORT UW   s4_stat_events_dropped(void);
 IMPORT UW   s4_stat_mag_overflow(void);
 IMPORT UW   s4_stat_accel_mg(void);                 /* last |a| in milli-g         */
 IMPORT UW   s4_stat_mag_mgauss(void);               /* last |B| in milli-gauss     */
+/* Monotonic tick tracing: read-only, unaffected by s4_stat_reset(). */
+IMPORT UW   s4_stat_handler_ticks(void);    /* cyclic callback invocations */
+IMPORT UW   s4_stat_tick_flag_errors(void); /* failed tk_set_flg calls      */
+IMPORT UW   s4_stat_wait_timeouts(void);    /* IMU task tick wait timeouts */
+/* Read-only stall diagnostics; stage is last IMU operation reached. */
+IMPORT ID   s4_diag_task_id(void);
+IMPORT UW   s4_diag_stage(void);
+IMPORT UW   s4_diag_stage_age_ms(void);
+IMPORT UW   s4_diag_wakeups(void);
+IMPORT UW   s4_diag_other_wait_errors(void);
 IMPORT void s4_stat_reset(void);
 
 /* ---- Distance from Motion Control (Buddy 2): read-only, monotonic, mm.

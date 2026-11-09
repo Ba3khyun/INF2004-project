@@ -23,7 +23,9 @@
  */
 
 #include "subsystem2.h"
+#include "../app_debug.h"
 #include "motion_control.h"
+#include "motion_feedback_math.h"
 #include "../subsystem1/subsystem1.h" /* IF-B1-01: telemetry_post */
 
 /* ========================
@@ -38,6 +40,12 @@
 #define MOVE_PWM 20.0f
 #define TURN_PWM 15.0f
 #define STEER_RIGHT_INNER_PWM 12.0f
+
+/* SAFETY GATE: speed requests are computed, stored and validated, but DO NOT
+ * alter motor PWM while live ESTOP and command arbitration are unverified.
+ * Do not enable this gate just to get tests passing. */
+#define B2_ENABLE_LIVE_SPEED_CAP_PWM 0
+
 
 /* Speed telemetry (TQ_FIELD_SPEED, cm/s).  WHEEL_DIAMETER_CM is a
    placeholder: measure the wheel and correct it. */
@@ -87,6 +95,65 @@ LOCAL float g_motion_distance_total = 0.0f;
 LOCAL UW g_distance_prev_left = 0U;
 LOCAL UW g_distance_prev_right = 0U;
 
+/* Motion task is the sole writer of these four aligned published words.
+ * The double-read of even sequence creates a consistent cross-core snapshot.
+ * The signs are inferred from commanded motion state (single A-channel IRQ).
+ */
+LOCAL volatile UW g_wheel_feedback_seq = 0u;
+LOCAL volatile INT g_wheel_left_mm = 0;
+LOCAL volatile INT g_wheel_right_mm = 0;
+LOCAL volatile UW g_wheel_sample_ms = 0u;
+LOCAL volatile UW g_wheel_direction_inferred = 0u;
+LOCAL float g_wheel_left_total_mm = 0.0f;
+LOCAL float g_wheel_right_total_mm = 0.0f;
+/* Speed cap setter never calls motor routines: only motor task may apply it. */
+LOCAL volatile UW g_requested_speed_cap_pct = MC_SPEED_CAP_NORMAL;
+
+EXPORT ER motion_speed_cap_request(UW percent)
+{
+    if (percent > 100u) return E_PAR;
+    __atomic_store_n(&g_requested_speed_cap_pct, percent, __ATOMIC_RELEASE);
+    return E_OK;
+}
+EXPORT UW motion_speed_cap_requested(void)
+{
+    return __atomic_load_n(&g_requested_speed_cap_pct, __ATOMIC_ACQUIRE);
+}
+EXPORT ER motion_get_wheel_feedback(motion_wheel_feedback_t *out)
+{
+    UW i, a, b;
+    if (!out) return E_PAR;
+    for (i = 0u; i < 6u; ++i) {
+        a = __atomic_load_n(&g_wheel_feedback_seq, __ATOMIC_SEQ_CST);
+        if ((a == 0u) || (a & 1u)) continue;
+        out->left_signed_mm = __atomic_load_n(&g_wheel_left_mm, __ATOMIC_SEQ_CST);
+        out->right_signed_mm = __atomic_load_n(&g_wheel_right_mm, __ATOMIC_SEQ_CST);
+        out->sample_ms = __atomic_load_n(&g_wheel_sample_ms, __ATOMIC_SEQ_CST);
+        out->direction_inferred = __atomic_load_n(&g_wheel_direction_inferred, __ATOMIC_SEQ_CST);
+        b = __atomic_load_n(&g_wheel_feedback_seq, __ATOMIC_SEQ_CST);
+        if ((a == b) && ((b & 1u) == 0u)) {
+            out->sequence = b >> 1;
+            return E_OK;
+        }
+    }
+    return E_TMOUT;
+}
+LOCAL INT round_signed_mm(float x)
+{
+    return (INT)(x >= 0.0f ? x + 0.5f : x - 0.5f);
+}
+LOCAL void publish_wheel_feedback(UW stamp, UW inferred)
+{
+    UW next = __atomic_load_n(&g_wheel_feedback_seq, __ATOMIC_RELAXED) + 1u;
+    __atomic_store_n(&g_wheel_feedback_seq, next, __ATOMIC_SEQ_CST); /* odd */
+    __atomic_store_n(&g_wheel_left_mm, round_signed_mm(g_wheel_left_total_mm), __ATOMIC_SEQ_CST);
+    __atomic_store_n(&g_wheel_right_mm, round_signed_mm(g_wheel_right_total_mm), __ATOMIC_SEQ_CST);
+    __atomic_store_n(&g_wheel_sample_ms, stamp, __ATOMIC_SEQ_CST);
+    __atomic_store_n(&g_wheel_direction_inferred, inferred, __ATOMIC_SEQ_CST);
+    __atomic_store_n(&g_wheel_feedback_seq, next + 1u, __ATOMIC_SEQ_CST); /* even */
+}
+
+
 /* Read-only interface for Subsystem 4 */
 EXPORT UW motion_get_distance_mm(void)
 {
@@ -128,25 +195,29 @@ LOCAL void update_encoder_distance(void)
     g_distance_prev_left = left_now;
     g_distance_prev_right = right_now;
 
-    /*
-     * Temporary policy: count forward/arc travel only.
-     * Do not count pivot turns or reverse movements.
-     */
-    if ((motion_state == MOTION_FORWARD) ||
-        (motion_state == MOTION_ARC_LEFT) ||
-        (motion_state == MOTION_ARC_RIGHT)) {
+    left_mm = encoder_left_distance_cm(left_delta, WHEEL_DIAMETER_CM) * 10.0f;
+    right_mm = encoder_right_distance_cm(right_delta, WHEEL_DIAMETER_CM) * 10.0f;
 
-        left_mm = encoder_left_distance_cm(
-            left_delta, WHEEL_DIAMETER_CM) * 10.0f;
-
-        right_mm = encoder_right_distance_cm(
-            right_delta, WHEEL_DIAMETER_CM) * 10.0f;
-
-        g_motion_distance_total +=
-            (left_mm + right_mm) * 0.5f;
-
-        g_motion_distance_mm =
-            (UW)(g_motion_distance_total + 0.5f);
+    /* Cumulative forward-path distance remains backward compatible with IMU. */
+    if (motion_state == MOTION_FORWARD || motion_state == MOTION_ARC_LEFT ||
+        motion_state == MOTION_ARC_RIGHT) {
+        g_motion_distance_total += (left_mm + right_mm) * 0.5f;
+        g_motion_distance_mm = (UW)(g_motion_distance_total + 0.5f);
+        g_wheel_left_total_mm += left_mm;
+        g_wheel_right_total_mm += right_mm;
+        publish_wheel_feedback(now_ms(), 1u);
+    } else if (motion_state == MOTION_LEFT) {
+        /* Model left pivot: negative left wheel, positive right wheel. */
+        g_wheel_left_total_mm -= left_mm;
+        g_wheel_right_total_mm += right_mm;
+        publish_wheel_feedback(now_ms(), 1u);
+    } else if (motion_state == MOTION_RIGHT) {
+        g_wheel_left_total_mm += left_mm;
+        g_wheel_right_total_mm -= right_mm;
+        publish_wheel_feedback(now_ms(), 1u);
+    } else {
+        /* Stationary: publish heartbeat without inventing wheel direction. */
+        publish_wheel_feedback(now_ms(), 0u);
     }
 }
 
@@ -238,6 +309,34 @@ LOCAL void check_safety(void)
  * Start movement
  * ======================== */
 
+/* Only the motion-owning task may translate cap requests into physical PWM.
+ * With B2_ENABLE_LIVE_SPEED_CAP_PWM=0 this returns Buddy 2's original PWM. */
+LOCAL float capped_pwm(float base)
+{
+#if B2_ENABLE_LIVE_SPEED_CAP_PWM
+    return b2_cap_pwm(base, motion_speed_cap_requested());
+#else
+    return base;
+#endif
+}
+#if B2_ENABLE_LIVE_SPEED_CAP_PWM
+LOCAL void apply_active_speed_limit(void)
+{
+    float drive = capped_pwm(MOVE_PWM);
+    float steer = capped_pwm(STEER_RIGHT_INNER_PWM);
+    float pivot = capped_pwm(TURN_PWM);
+    if (!continuous_motion || !is_moving() || safety_estop_latched()) return;
+    switch (motion_state) {
+    case MOTION_FORWARD: motor1_forward(drive); motor2_reverse(drive); break;
+    case MOTION_ARC_LEFT: motor1_forward(steer); motor2_reverse(drive); break;
+    case MOTION_ARC_RIGHT: motor1_forward(drive); motor2_reverse(steer); break;
+    case MOTION_LEFT: motors_left(pivot); break;
+    case MOTION_RIGHT: motors_right(pivot); break;
+    default: break;
+    }
+}
+#endif
+
 LOCAL void start_motion(MotionState command, BOOL continuous)
 {
 	if (safety_estop_latched())
@@ -284,21 +383,21 @@ LOCAL void start_motion(MotionState command, BOOL continuous)
 		if (command == MOTION_ARC_RIGHT)
 		{
 			tm_printf((UB *)"\nmotion: starting gentle right arc...\n");
-			motor1_forward(MOVE_PWM);
-			motor2_reverse(STEER_RIGHT_INNER_PWM);
+			motor1_forward(capped_pwm(MOVE_PWM));
+			motor2_reverse(capped_pwm(STEER_RIGHT_INNER_PWM));
 		}
 		else if (command == MOTION_ARC_LEFT)
 		{
 			tm_printf((UB *)"\nmotion: starting gentle left arc...\n");
-			motor1_forward(STEER_RIGHT_INNER_PWM);
-			motor2_reverse(MOVE_PWM);
+			motor1_forward(capped_pwm(STEER_RIGHT_INNER_PWM));
+			motor2_reverse(capped_pwm(MOVE_PWM));
 		}
 		else
 		{
 			tm_printf((UB *)"\nmotion: starting %sFORWARD movement...\n",
 					  continuous ? "continuous " : "");
-			motor1_forward(MOVE_PWM);
-			motor2_reverse(MOVE_PWM);
+			motor1_forward(capped_pwm(MOVE_PWM));
+			motor2_reverse(capped_pwm(MOVE_PWM));
 		}
 	}
 	else if (command == MOTION_LEFT)
@@ -306,14 +405,14 @@ LOCAL void start_motion(MotionState command, BOOL continuous)
 		target_revolutions = continuous ? 0.0f : TURN_REVOLUTIONS;
 		tm_printf((UB *)"\nmotion: starting %sLEFT turn...\n",
 				  continuous ? "continuous " : "");
-		motors_left(TURN_PWM);
+		motors_left(capped_pwm(TURN_PWM));
 	}
 	else if (command == MOTION_RIGHT)
 	{
 		target_revolutions = continuous ? 0.0f : TURN_REVOLUTIONS;
 		tm_printf((UB *)"\nmotion: starting %sRIGHT turn...\n",
 				  continuous ? "continuous " : "");
-		motors_right(TURN_PWM);
+		motors_right(capped_pwm(TURN_PWM));
 	}
 }
 
@@ -542,6 +641,10 @@ EXPORT void motion_task(INT stacd, void *exinf)
 	g_distance_prev_right = encoder_get_right_count();
 	g_motion_distance_mm = 0U;
 	g_motion_distance_total = 0.0f;
+    g_wheel_left_total_mm = 0.0f;
+    g_wheel_right_total_mm = 0.0f;
+    __atomic_store_n(&g_requested_speed_cap_pct, MC_SPEED_CAP_NORMAL, __ATOMIC_RELEASE);
+    publish_wheel_feedback(now_ms(), 0u);
 
 
 	tm_printf((UB *)"motion: Buddy 2 Motion Control ready (motion_cmd_q)\n");
@@ -572,8 +675,10 @@ EXPORT void motion_task(INT stacd, void *exinf)
 		while ((len = tk_rcv_mbf(motion_cmd_q, &cmd, TMO_POL)) == MC_CMD_LEN)
 		{
 
-			/* DEBUG: Confirm Buddy 2 receives commands */
-			tm_printf((UB *)"[BUDDY 2] Received command: %c\r\n", cmd);
+#if APP_DEBUG_B2_COMMAND
+			/* Optional queue trace: NOT needed for normal motion execution. */
+		tm_printf((UB *)"[BUDDY 2] Received command: %c\r\n", cmd);
+#endif
 
 			process_command(cmd);
 			check_safety();
@@ -585,6 +690,11 @@ EXPORT void motion_task(INT stacd, void *exinf)
 
 		now = now_ms();
 		check_safety();
+#if B2_ENABLE_LIVE_SPEED_CAP_PWM
+        /* Reapply latest bounded request at the existing 10ms motion tick.
+         * Only for continuous moves; never reenergize completed discrete wheels. */
+        apply_active_speed_limit();
+#endif
 		update_motion(now);
 		post_speed(now);
 		motion_tick_count++;

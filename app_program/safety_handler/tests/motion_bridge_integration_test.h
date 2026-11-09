@@ -1,0 +1,4 @@
+#ifndef B4_MOTION_BRIDGE_INTEGRATION_TEST_H
+#define B4_MOTION_BRIDGE_INTEGRATION_TEST_H
+int motion_bridge_integration_test_run(void);
+#endif

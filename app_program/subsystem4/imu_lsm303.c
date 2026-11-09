@@ -1,5 +1,6 @@
 /* Subsystem 4: LSM303D driver, using existing kernel I2C EXEC interface. */
 #include "imu_lsm303.h"
+#include "../app_debug.h"
 #include "../../device/include/dev_i2c.h"
 
 #define VECTOR_BYTES 6
@@ -55,51 +56,27 @@ EXPORT ER imu_drv_read_mag(int16_t raw[3], UB *overflow)
 {
     UB b[VECTOR_BYTES];
     ER er;
-
-    static UW debug_count = 0U;
-    UB status = 0U;
-    ER status_er = E_OK;
-    BOOL do_debug;
-
-    /*
-     * TEMPORARY DIAGNOSTIC:
-     * Start after 1400 successful samples, then check once
-     * every 100 samples, stopping after sample 2400.
-     *
-     * Avoid disturbing the automated startup/timing tests.
-     */
-    debug_count++;
-
-    do_debug = (debug_count >= 1400U) &&
-               (debug_count <= 2400U) &&
-               ((debug_count % 100U) == 0U);
-
-    /*
-     * Read STATUS_M (0x07) BEFORE the magnetic data.
-     * Only perform this extra I2C transaction during
-     * diagnostic samples.
-     */
-    if (do_debug) {
-        status_er = xfer_read(g_addr, 0x07U, &status, 1);
+#if APP_DEBUG_IMU_EXTRA_I2C
+    /* OPTIONAL: adds an extra status-register I2C transaction.
+     * Explicitly disabled by default to protect 100 Hz sampling. */
+    static UW debug_samples = 0U;
+    if ((++debug_samples % 100U) == 0U) {
+        UB status = 0U;
+        ER status_er = xfer_read(g_addr, 0x07U, &status, 1);
+        tm_printf((UB*)"[IMU-I2C] STATUS_M er=%d value=0x%02x\n",
+                  (INT)status_er, (UINT)status);
     }
-
-    /* Original six-byte magnetic burst read */
+#endif
+    /* Original six-byte magnetic burst, no debug bus traffic by default. */
     er = xfer_read(g_addr,
                    (UB)(LSM303D_OUT_X_L_M | LSM303D_AUTO_INC),
                    b, VECTOR_BYTES);
+    if (er != E_OK) return er;
 
-    if (er != E_OK) {
-        return er;
-    }
-
-    /* Convert signed little-endian magnetic values */
     raw[0] = le16(b[0], b[1]);
     raw[1] = le16(b[2], b[3]);
     raw[2] = le16(b[4], b[5]);
-
-    /* Preserve existing overflow behavior */
     *overflow = 0U;
-
     return E_OK;
 }
 EXPORT UW imu_drv_scan(void)

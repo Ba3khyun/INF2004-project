@@ -58,13 +58,46 @@ static volatile UW g_mag_ovf;
 static volatile UW g_accel_mg;
 static volatile UW g_mag_mgauss;
 static volatile UW g_missed_ticks;
+/* Monotonic ISR diagnostics: never reset by S4-U16 statistics test. */
+static volatile UW g_handler_ticks;
+static volatile UW g_tick_flag_errors;
 static volatile UW g_reset_request;
+/* IMU stall tracing: aligned, single-writer status snapshots. No I/O. */
+static volatile ID g_imu_task_id = -1;
+static volatile UW g_imu_stage = 0U;
+static volatile UW g_imu_stage_us = 0U;
+static volatile UW g_imu_wakeups = 0U;
+static volatile UW g_imu_other_wait_errors = 0U;
+
+/* Stage: 0=start, 1=wait tick, 2=woken, 3=accel I2C,
+ * 4=mag I2C, 5=process sample, 6=cycle done,
+ * 7=console output, 8=complete, 9=unexpected wait error. */
+static void imu_diag_stage(UW stage)
+{
+    g_imu_stage_us = S4_TIMER_RAWL;
+    g_imu_stage = stage;
+}
+
+EXPORT ID s4_diag_task_id(void) { return g_imu_task_id; }
+EXPORT UW s4_diag_stage(void) { return g_imu_stage; }
+EXPORT UW s4_diag_stage_age_ms(void)
+{ return (S4_TIMER_RAWL - g_imu_stage_us) / 1000U; }
+EXPORT UW s4_diag_wakeups(void) { return g_imu_wakeups; }
+EXPORT UW s4_diag_other_wait_errors(void) { return g_imu_other_wait_errors; }
+
 
 EXPORT volatile UW s4_imu_snapshot = 0U;
+/* IMU task is the sole writer. VC reads these without stealing imu_evt_q. */
+static volatile UW g_hump_start_count = 0U;
+static volatile UW g_hump_done_word = 0U;
+static UW g_hump_done_seq = 0U;
 
+
+#if S4_DEBUG_PRINT
 static const char *const k_state_name[S4_ST_COUNT] = {
     "INIT_CAL", "MONITOR", "HUMP", "SHOCK", "FAULT"
 };
+#endif
 
 /* ------------------------------------------------------------------ */
 /* Weak defaults so the subsystem builds before Buddy 2 provides these */
@@ -78,6 +111,9 @@ __attribute__((weak)) UW motion_get_distance_mm(void)
 /* Public read-only interface                                          */
 /* ------------------------------------------------------------------ */
 EXPORT UW s4_imu_get_snapshot(void)      { return s4_imu_snapshot; }
+EXPORT UW s4_imu_hump_start_count(void) { return g_hump_start_count; }
+EXPORT UW s4_imu_hump_done_word(void) { return g_hump_done_word; }
+
 EXPORT s4_imu_state_t s4_imu_state(void) { return g.state; }
 EXPORT UW s4_stat_cycles(void)           { return g_cycles; }
 EXPORT UW s4_stat_cycle_us_max(void)     { return g_cycle_us_max; }
@@ -86,6 +122,9 @@ EXPORT UW s4_stat_events_dropped(void)   { return g_evt_dropped; }
 EXPORT UW s4_stat_mag_overflow(void)     { return g_mag_ovf; }
 EXPORT UW s4_stat_accel_mg(void)         { return g_accel_mg; }
 EXPORT UW s4_stat_mag_mgauss(void)       { return g_mag_mgauss; }
+EXPORT UW s4_stat_handler_ticks(void)   { return g_handler_ticks; }
+EXPORT UW s4_stat_tick_flag_errors(void){ return g_tick_flag_errors; }
+EXPORT UW s4_stat_wait_timeouts(void)   { return g_missed_ticks; }
 
 EXPORT void s4_stat_reset(void)
 {
@@ -104,8 +143,13 @@ EXPORT ER s4_imu_request_reinit(void)
 /* Cyclic handler (runs in handler context): only sets a flag. */
 EXPORT void imu_cyc_handler(void *exinf)
 {
+    ER er;
     (void)exinf;
-    (void)tk_set_flg(flg_imu, S4_FLG_TICK);
+    g_handler_ticks++;  /* single ISR writer; 32-bit read-only outside handler */
+    er = tk_set_flg(flg_imu, S4_FLG_TICK);
+    if (er < E_OK) {
+        g_tick_flag_errors++;
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -116,6 +160,14 @@ static void post_evt(s4_evt_type_t type, uint32_t height_mm, uint32_t valid)
     uint16_t w = s4_evt_pack(type, height_mm, valid, g.evt_seq);
     ER er;
     g.evt_seq++;
+    /* Read-only event tap is independent of mbf_imu_evt capacity.
+     * Do not synthesize or acknowledge a safety flag here. */
+    if (type == S4_EVT_HUMP_START) {
+        g_hump_start_count++;
+    } else if (type == S4_EVT_HUMP_DONE) {
+        g_hump_done_seq++;
+        g_hump_done_word = ((g_hump_done_seq & 0xFFFFU) << 16) | (UW)w;
+    }
     er = tk_snd_mbf(mbf_imu_evt, &w, (INT)sizeof(w), TMO_POL);
     if (er < E_OK) {
         g_evt_dropped++;           /* queue full: count it, never block */
@@ -291,54 +343,19 @@ static void run_cycle(void)
     ER ea;
     ER em;
     uint32_t i;
-    static UW axis_debug_count = 0U; // ADDED
 
     if (g.state == S4_ST_FAULT) {
         publish_snapshot();
         return;
     }
 
-    // The IMU driver is not reentrant, so we must read the accelerometer and magnetometer in sequence. The commented-out code below shows the naive approach, but it does not measure the time taken for each read. The new code captures timestamps before and after each read to calculate the elapsed time.
-    // REplace the following lines with the timing debug code
-    // ea = imu_drv_read_accel(raw_a);
-    //em = (ea == E_OK) ? imu_drv_read_mag(raw_m, &ovf) : ea;
-    
-    UW t_accel_start = S4_TIMER_RAWL;
-
+    /* Device access remains sequential. Stage counters are read-only,
+     * and do not perform console I/O inside the 10 ms sensor cycle. */
+    imu_diag_stage(3U);
     ea = imu_drv_read_accel(raw_a);
-
-    UW t_mag_start = S4_TIMER_RAWL;
-
+    imu_diag_stage(4U);
     em = (ea == E_OK) ? imu_drv_read_mag(raw_m, &ovf) : ea;
-
-    UW t_mag_end = S4_TIMER_RAWL;
-
-    // static UW debug_count = 0U;
-
-    // if (++debug_count >= 100U) {
-    //     debug_count = 0U;
-
-    //     tm_printf((UB *)
-    //         "IMU I2C timing: accel=%lu us mag=%lu us\n",
-    //         (unsigned long)(t_mag_start - t_accel_start),
-    //         (unsigned long)(t_mag_end - t_mag_start));
-    // }
-
-    // ^^^ This timing debug code measures how long it takes to read the accelerometer and magnetometer data from the IMU over I2C. It uses the RP2040's free-running timer to capture timestamps before and after each read operation. Every 100 cycles, it prints the elapsed time for both reads in microseconds. This can help identify performance issues or delays in I2C communication with the IMU.
-
-    // static UW mag_debug_count = 0U;
-
-    // if (++mag_debug_count >= 100U) {
-    //     mag_debug_count = 0U;
-
-    //     tm_printf((UB *)
-    //         "IMU MAG RAW: X=%d Y=%d Z=%d\n",
-    //         (int)raw_m[0],
-    //         (int)raw_m[1],
-    //         (int)raw_m[2]);
-    // }
-
-    // ^^^ This additional debug code prints the raw magnetometer readings from the IMU every 100 cycles. It helps verify that the magnetometer is returning valid data and can be useful for diagnosing issues with the IMU's magnetic field measurements.
+    imu_diag_stage(5U);
 
     if ((ea != E_OK) || (em != E_OK)) {
         g.fail_cnt++;
@@ -395,6 +412,7 @@ static void run_cycle(void)
     publish_snapshot();
 }
 
+#if S4_DEBUG_PRINT
 static void debug_print(UW cycle_us)
 {
     tm_printf((UB*)"IMU %s hdg=%d pitch_x10=%d roll_x10=%d |a|=%dmg |B|=%dmG drop=%u i2cerr=%u cyc=%uus\n",
@@ -405,6 +423,7 @@ static void debug_print(UW cycle_us)
               (INT)g_accel_mg, (INT)g_mag_mgauss,
               (UINT)g_evt_dropped, (UINT)imu_drv_error_count(), (UINT)cycle_us);
 }
+#endif
 
 /* ------------------------------------------------------------------ */
 /* The task                                                            */
@@ -424,6 +443,8 @@ EXPORT void imu_task(INT stacd, void *exinf)
     (void)stacd;
     (void)exinf;
 
+    g_imu_task_id = tk_get_tid();
+    imu_diag_stage(0U);
     g.map = k_default_map;
     g.heading_deg = 0.0f;
     start_calibration();
@@ -431,9 +452,11 @@ EXPORT void imu_task(INT stacd, void *exinf)
     
     er = imu_drv_init(s4_i2c_dev);
 
+#if APP_DEBUG_IMU
     tm_printf((UB*)
         "[IMU INIT] imu_drv_init returned %d\n",
         (INT)er);
+#endif
 
     if (er != E_OK) {
         enter_fault(FLT_IMU_I2C);
@@ -442,6 +465,7 @@ EXPORT void imu_task(INT stacd, void *exinf)
     (void)tk_sta_cyc(cyc_imu);
 
     for (;;) {
+        imu_diag_stage(1U);
         er = tk_wai_flg(flg_imu, S4_FLG_TICK | S4_FLG_REINIT,
                         TWF_ORW | TWF_BITCLR, &ptn, S4_TICK_WAIT_MS);
         if (er == E_TMOUT) {
@@ -449,9 +473,13 @@ EXPORT void imu_task(INT stacd, void *exinf)
             continue;
         }
         if (er < E_OK) {
+            g_imu_other_wait_errors++;
+            imu_diag_stage(9U);
             continue;
         }
 
+        g_imu_wakeups++;
+        imu_diag_stage(2U);
         t0 = S4_TIMER_RAWL;
         if (g_reset_request != 0U) {
             g_reset_request = 0U;
@@ -463,6 +491,7 @@ EXPORT void imu_task(INT stacd, void *exinf)
         if ((ptn & S4_FLG_TICK) != 0U) {
             run_cycle();
             g_cycles++;
+            imu_diag_stage(6U);
         }
         t1 = S4_TIMER_RAWL;
 
@@ -480,9 +509,12 @@ EXPORT void imu_task(INT stacd, void *exinf)
         have_prev = 1U;
 
 #if S4_DEBUG_PRINT
-        if ((g_cycles % S4_DEBUG_CYCLES) == 0U) {
+        if (((ptn & S4_FLG_TICK) != 0U) &&
+            ((g_cycles % S4_DEBUG_CYCLES) == 0U)) {
+            imu_diag_stage(7U);
             debug_print(cycle_us);
         }
 #endif
+        imu_diag_stage(8U);
     }
 }

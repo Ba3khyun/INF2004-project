@@ -4,6 +4,7 @@
  * latch is independent from the actual SAFETY_ESTOP_LATCHED bit.
  */
 #include "safety_handler.h"
+#include "../app_debug.h"
 #include "safety_core.h"
 #include "safety_estop_bridge.h"
 
@@ -16,7 +17,7 @@
 #endif
 
 #define SH_OBSERVER_PERIOD_MS 50
-#define SH_DEBUG_PRINT 1
+#define SH_DEBUG_PRINT APP_DEBUG_SAFETY
 
 static safety_core_t g_safety;
 #if SH_ENABLE_SHARED_ESTOP_ASSERT
@@ -48,7 +49,9 @@ ER safety_handler_init(void)
 
 static void safety_handler_task(INT stacd, void *exinf)
 {
+#if SH_DEBUG_PRINT
     UW previous = 0u;
+#endif
     UW printed_error = 0u;
     (void)stacd;
     (void)exinf;
@@ -82,18 +85,18 @@ static void safety_handler_task(INT stacd, void *exinf)
                           (UINT)g_safety.pending_reasons);
             }
 #endif
+#if SH_DEBUG_PRINT
             previous = (UW)g_safety.latched;
+#endif
         } else {
             /* Conservative diagnostic state if the shared flag cannot be read.
              * Do not claim the physical motor is stopped. */
             __atomic_store_n(&g_last_latched, 1u, __ATOMIC_RELEASE);
-#if SH_DEBUG_PRINT
             if (!printed_error) {
                 tm_printf((UB*)"[SAFETY] tk_ref_flg failed: %d "
                           "(OBSERVER FAULT; motor safety NOT assured)\n", (INT)er);
                 printed_error = 1u;
             }
-#endif
         }
         tk_dly_tsk(SH_OBSERVER_PERIOD_MS);
     }
