@@ -12,7 +12,7 @@
 #define S3_BATCH_SIZE       5   /* report to subsystem 4 every N samples[cite: 2] */
 
 #define THRESHOLD           1500  // Adjusted line-tracking threshold
-#define BARCODE_PIN         28    // GP17 digital barcode sensor
+#define BARCODE_PIN         28    // GP28 digital barcode sensor
 #define BARCODE_TIMEOUT_MS  10000  // 10 seconds overall scan timeout
 #define QUIET_ZONE_TIMEOUT_MS 3000  // 3s continuous white confirms end of barcode
 #define BARCODE_BAR_COUNT   15    // Black bars in each A-D barcode

@@ -6,7 +6,7 @@
 #include "subsystem3.h"
 #include "../subsystem2/subsystem2.h"   /* IF-01/02: SAMPLE_MSG */
 #include "../subsystem2/motion_control.h"   /* Subsystem 2 Motor Control API */
-#include "../subsystem4/subsystem4.h"   /* IF-03: mbf_summary */
+#include "../subsystem4/subsystem4.h"   /* IF-03: mbf_summary; IF-B4-01: vc_line_cmd_post */
 
 #define LINE_RECOVERY_ARC_MS 500u
 #define RIGHT_LINE_LOSS_PIVOT_MS 150u
@@ -159,6 +159,22 @@ static ER read_adc(ID device, W channel, UW *value)
 	return (size == 1) ? E_OK : E_IO;
 }
 
+/* Fatal error: stop the car (line following may have left a continuous
+   drive running), release the ADC and end this task.  A micro T-Kernel
+   task must end with tk_ext_tsk(), never by returning. */
+static void line_task_exit(ID adc_device) __attribute__((noreturn));
+static void line_task_exit(ID adc_device)
+{
+	(void)motion_cmd_post(MC_CMD_HALT);
+	if (adc_device >= E_OK) {
+		(void)tk_cls_dev(adc_device, 0);
+	}
+	tk_ext_tsk();
+	for (;;) {
+		/* tk_ext_tsk() does not return */
+	}
+}
+
 EXPORT void consumer_task(INT stacd, void *exinf)
 {
 	SAMPLE_MSG  *msg;
@@ -173,7 +189,7 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 	ID adc_device = tk_opn_dev((const UB*)"adca", TD_READ);
 	if (adc_device < E_OK) {
 		tm_printf((UB*)"[S3] Failed to open ADC device: %d\r\n", adc_device);
-		return;
+		line_task_exit(adc_device);
 	}
 
 	RobotState current_state = STATE_FOLLOWING_LINE;
@@ -181,8 +197,7 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 	er = tk_get_otm(&current_time);
 	if (er != E_OK) {
 		tm_printf((UB*)"[S3] Failed to read system time: %d\r\n", er);
-		(void)tk_cls_dev(adc_device, 0);
-		return;
+		line_task_exit(adc_device);
 	}
 	UW barcode_start_time = 0;
 	UW line_lost_start_time = 0;
@@ -200,8 +215,7 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 	}
 	if (er != E_OK) {
 		tm_printf((UB*)"[S3] Failed to register barcode GPIO interrupt: %d\r\n", er);
-		(void)tk_cls_dev(adc_device, 0);
-		return;
+		line_task_exit(adc_device);
 	}
 
 	while (1) {
@@ -239,15 +253,13 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 		}
 		if (er != E_OK) {
 			tm_printf((UB*)"[S3] ADC read failed: %d\r\n", er);
-			(void)tk_cls_dev(adc_device, 0);
-			return;
+			line_task_exit(adc_device);
 		}
 
 		er = tk_get_otm(&current_time);
 		if (er != E_OK) {
 			tm_printf((UB*)"[S3] Failed to read system time: %d\r\n", er);
-			(void)tk_cls_dev(adc_device, 0);
-			return;
+			line_task_exit(adc_device);
 		}
 		UW now = current_time.lo;
 
@@ -262,10 +274,10 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 
 		/// Print debug status once per second.
 		if ((UW)(now - last_debug_print) >= 1000) {
-			tm_printf((UB*)"RAW -> R: %4u [%s] | C: %4u [%s] | Barcode (GP2): %d | Threshold: %d\r\n",
+			tm_printf((UB*)"RAW -> R: %4u [%s] | C: %4u [%s] | Barcode (GP%d): %d | Threshold: %d\r\n",
 				      right, right_line ? "BLACK" : "WHITE",
 				      center, center_line ? "BLACK" : "WHITE",
-				      barcode_val_print, THRESHOLD);
+				      BARCODE_PIN, barcode_val_print, THRESHOLD);
 			last_debug_print = now;
 		}
 
@@ -284,7 +296,7 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 					if (right_line_correction_active) {
 						tm_printf((UB*)"[STEERING] Right correction lost the line; trying a brief sharp right pivot.\r\n");
 						line_lost_start_time = now;
-						er = motion_cmd_post(MC_CMD_DRIVE_RIGHT);
+						er = vc_line_cmd_post(MC_CMD_DRIVE_RIGHT);
 						if (er == E_OK) {
 							last_line_motion_command = MC_CMD_DRIVE_RIGHT;
 						}
@@ -294,7 +306,7 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 
 					tm_printf((UB*)"[STEERING] Line lost; starting gentle left recovery arc.\r\n");
 					line_lost_start_time = now;
-					er = motion_cmd_post(MC_CMD_STEER_LEFT);
+					er = vc_line_cmd_post(MC_CMD_STEER_LEFT);
 					if (er == E_OK) {
 						last_line_motion_command = MC_CMD_STEER_LEFT;
 					}
@@ -312,7 +324,7 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 				} 
 
 				if (line_motion_command != last_line_motion_command || motion_is_idle()) {
-					er = motion_cmd_post(line_motion_command);
+					er = vc_line_cmd_post(line_motion_command);
 					if (er == E_OK) {
 						last_line_motion_command = line_motion_command;
 					}
@@ -325,10 +337,10 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 				
 				//Check how long it has been reading the barcode
 				if ((current_us - barcode_start_time) > (BARCODE_TIMEOUT_MS * 1000UL)) {
-					tm_printf((UB*)"TIMEOUT: Barcode read took too long. Raw edges=%u, accepted=%u, ignored=%u, high=%u bars, low=%u bars, GP2=%u.\r\n",
+					tm_printf((UB*)"TIMEOUT: Barcode read took too long. Raw edges=%u, accepted=%u, ignored=%u, high=%u bars, low=%u bars, GP%u=%u.\r\n",
 						  barcode_raw_edge_count, barcode_edge_count,
 						  barcode_ignored_edge_count, high_bar_count, low_bar_count,
-						  gpio_get_val(BARCODE_PIN));
+						  (UW)BARCODE_PIN, gpio_get_val(BARCODE_PIN));
 					reset_barcode_scan();
 					current_state = STATE_FOLLOWING_LINE; 
 					break;
@@ -389,7 +401,7 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 						   RIGHT_LINE_LOSS_PIVOT_MS) {
 					if (last_line_motion_command != MC_CMD_DRIVE_RIGHT ||
 					    motion_is_idle()) {
-						er = motion_cmd_post(MC_CMD_DRIVE_RIGHT);
+						er = vc_line_cmd_post(MC_CMD_DRIVE_RIGHT);
 						if (er == E_OK) {
 							last_line_motion_command = MC_CMD_DRIVE_RIGHT;
 						}
@@ -398,16 +410,19 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 					right_line_correction_active = false;
 					tm_printf((UB*)"[STEERING] Brief right pivot did not reacquire the line; switching to left recovery.\r\n");
 					line_lost_start_time = now;
-					er = motion_cmd_post(MC_CMD_STEER_LEFT);
+					er = vc_line_cmd_post(MC_CMD_STEER_LEFT);
 					if (er == E_OK) {
 						last_line_motion_command = MC_CMD_STEER_LEFT;
 					}
 				} else if ((UW)(now - line_lost_start_time) >=
 					   LINE_RECOVERY_ARC_MS &&
-					   last_line_motion_command != MC_CMD_DRIVE_LEFT) {
-					tm_printf((UB*)"[STEERING] Line not found; escalating to sharper left pivot.\r\n");
-					er = motion_cmd_post(MC_CMD_DRIVE_LEFT);
+					   (last_line_motion_command != MC_CMD_DRIVE_LEFT ||
+					    motion_is_idle())) {
+					/* motion_is_idle(): the pivot was halted (e.g. by
+					   the Vehicle Controller's line gate); restart it. */
+					er = vc_line_cmd_post(MC_CMD_DRIVE_LEFT);
 					if (er == E_OK) {
+						tm_printf((UB*)"[STEERING] Line not found; escalating to sharper left pivot.\r\n");
 						last_line_motion_command = MC_CMD_DRIVE_LEFT;
 					}
 				}

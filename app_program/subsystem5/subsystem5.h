@@ -30,6 +30,14 @@
  *	                     that exists this state is a bench stand-in: it
  *	                     waits for the path ahead to clear (or a timeout)
  *	                     and goes back to MONITORING_AHEAD.
+ *	                     When the path is clear (S5_CLEAR_PINGS pings at
+ *	                     >= S5_CLEAR_CM, here or later in MONITORING) it
+ *	                     sends a third event: state MONITORING, det 0,
+ *	                     action CONTINUE.  The interim Vehicle Controller
+ *	                     (subsystem 4) holds the car from STOP until that
+ *	                     CONTINUE (or a DECIDING event with CONTINUE).
+ *	                     Obstacle width also goes to telemetry
+ *	                     (TQ_FIELD_OBSTACLE) on DECIDING / CONTINUE.
  *
  *	  SEARCHING_FOR_LINE / RECOVERY_REWIND / REACQUIRING_LINE (Stage 5)
  *	  have codes reserved below.  They need Buddy 2's motion API and
@@ -99,8 +107,10 @@
  *                         0 = right, 90 = straight ahead, 180 = left
  *   NE       0/1          1 = some pings got no echo (data is weaker)
  *
- *  Two events per obstacle: (1) state PROFILING + action STOP as soon as
- *  it is confirmed; (2) state DECIDING + the recommended action.
+ *  Events per obstacle: (1) state PROFILING + action STOP as soon as
+ *  it is confirmed; (2) state DECIDING + the recommended action;
+ *  (3) if (2) was not CONTINUE: state MONITORING + action CONTINUE once
+ *  the path ahead is clear again.
  *  The sender never blocks.  If the buffer is full the OLDEST event is
  *  dropped, so the receiver always sees the newest decision.
  *  Receive with:  UW evt;  tk_rcv_mbf(mbf_obstacle, &evt, tmout);

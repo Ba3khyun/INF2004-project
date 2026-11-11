@@ -62,7 +62,8 @@ IMPORT void		motion_cyclic_handler(void *exinf);
 /* Queue one command.  Continuous drive commands run until replaced or halted.
    Never blocks; returns E_OK, E_PAR (unknown code) or E_TMOUT (queue full). */
 IMPORT ER	motion_cmd_post(UB cmd);
-/* TRUE only when the motion task is idle and no command is queued. */
+/* TRUE only when the motion task is idle, no command is queued and
+   SAFETY_ESTOP_LATCHED is clear (i.e. a new move would be accepted). */
 IMPORT BOOL	motion_is_idle(void);
 
 /* Private to subsystem 2 */

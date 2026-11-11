@@ -436,7 +436,10 @@ EXPORT BOOL motion_is_idle(void)
 {
 	T_RMBF status;
 
+	/* Not idle while ESTOP is latched: every move would be refused, so
+	   callers that re-post when idle (line following) must not spin. */
 	if (motion_state != MOTION_IDLE ||
+		safety_estop_latched() ||
 		tk_ref_mbf(motion_cmd_q, &status) != E_OK)
 	{
 		return FALSE;

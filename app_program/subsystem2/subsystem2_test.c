@@ -18,6 +18,7 @@
 #include "subsystem2.h"
 #include "motion_control.h"			/* encoder counts (read only) */
 #include "../subsystem1/wifi_telemetry.h"	/* telemetry_q statistics (read only) */
+#include "../subsystem4/subsystem4.h"		/* IF-B4-02: vc_line_gate_set */
 #include "../test_report.h"
 
 #if APP_TEST
@@ -104,8 +105,13 @@ EXPORT void subsystem2_test(void)
 		   "free slots and free blocks within pool size");
 
 	/* ================= Motion Control (Buddy 2) ================= */
+	/* Line following (S3) also writes motion_cmd_q.  Hold it off for the
+	   whole Motion section, playing the Vehicle Controller (IF-B4-02),
+	   so these checks are the only command writer. */
+	vc_line_gate_set(FALSE);
+	tk_dly_tsk(30);
 	safety_latch(FALSE);
-	(void)motion_cmd_post(MC_CMD_CLEAR);	/* known state: IDLE */
+	(void)motion_cmd_post(MC_CMD_CLEAR);	/* known state: IDLE, FLT_MOTOR clear */
 	tk_dly_tsk(50);
 
 	TEST_CHECK("S2-U03", tk_ref_mbf(motion_cmd_q, &rmbf) == E_OK &&
@@ -347,6 +353,7 @@ EXPORT void subsystem2_test(void)
 	tm_printf((UB*)"        S2-M01/M02 not built (S2_TEST_MOTORS=0): motors never driven\n");
 #endif
 
+	vc_line_gate_set(TRUE);		/* line following may drive again */
 	TEST_SUMMARY("subsystem2");
 }
 

@@ -1,0 +1,1345 @@
+
+
+microT-Kernel Version 3.00
+
+
+=== micro T-Kernel on Raspberry Pi Pico W (spec 0x6300, product 0x0003) ===
+dual-core (SMP) build, usermain on core 0
+motion: Buddy 2 Motion Control ready (motion_cmd_q)
+all subsystems started
+
+motion:   F = forward, L = left, R = right, X = stop, C = clear stop
+[TEST] === test run start ===
+monitor: I am task 8
+[TEST] S1-U01 PASS  cyclic handler is running
+[STEERING] Line lost; starting gentle left recovery arc.
+wifi: cyw43_utk_task starting (proc 1)
+wifi: cyw43_init() ...
+wifi: cyw43_init() returned, bringing interface up ...
+[BUDDY 2] Received command: a
+
+motion: starting gentle left arc...
+
+motion: EMERGENCY STOP: Encoder timeout
+motion: motors stopped. Send C to clear.
+S5: timer check 209709 us in 200 ms
+S5: obstacle task ready, obstacle if < 25 cm
+[STEERING] Line not found; escalating to sharper left pivot.
+[BUDDY 2] Received command: l
+motion: movement rejected: emergency stop active.
+S5: FAULT no echo -- check 5 V power, GND, TRIG=GP1, ECHO=GP0 (via divider)
+S5: ahead ? (no reading)
+RAW -> R: 1167 [WHITE] | C:  188 [WHITE] | Barcode (GP28): 1 | Threshold: 1500
+[TEST] S1-U02 PASS  LED task sleeps between ticks
+        telemetry_q free=48 of 128 bytes
+[TEST] S1-U04 PASS  telemetry_q: 4-byte messages, 128-byte buffer (16 deep)
+monitor: batch  n=5 last=40 from core 1
+monitor: t=3355771116 ms  samples=5  min=0 max=40 avg=20  free slots=4  free blocks=4
+wifi: Wi-Fi Telemetry Task id=3 pri=40 topics robot/is06/state / robot/is06/cmd
+wifi: t=1340 DISCONNECTED -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+        wifi task id=3 pri=40 state=CONNECTING_WIFI
+[TEST] S1-U05 PASS  Wi-Fi Telemetry Task runs at priority 40
+S5: ahead ? (no reading)
+wifi: link status -> joined AP, waiting for IP (1)
+RAW -> R:  899 [WHITE] | C:  163 [WHITE] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+[STEERING] Line reacquired; resuming line following.
+[BUDDY 2] Received command: q
+motion: movement rejected: emergency stop active.
+S5: ahead ? (no reading)
+monitor: batch  n=10 last=90 from core 1
+monitor: t=3355772656 ms  samples=10  min=0 max=90 avg=45  free slots=4  free blocks=4
+[STEERING] Right correction lost the line; trying a brief sharp right pivot.
+[BUDDY 2] Received command: r
+motion: movement rejected: emergency stop active.
+[STEERING] Line reacquired; resuming line following.
+[BUDDY 2] Received command: f
+motion: movement rejected: emergency stop active.
+RAW -> R: 2321 [BLACK] | C: 2279 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=3100 backlog full, dropped oldest (total 1)
+S5: ahead ? (no reading)
+        Wi-Fi task: 92 polls in 2 s, longest gap 259506 us
+[TEST] S1-U06 PASS  Wi-Fi task sleeps between polls: 30..75 polls/s (no busy loop)
+[TEST] S1-U07 PASS  telemetry golden frame identical to the PC encoder
+[TEST] S1-U08 PASS  command frame abort/7 = 05 07 54, CRC-8 check 0xF4
+[TEST] S1-U09 PASS  20 posts into 16 slots: oldest 4 dropped, newest 16 kept in order, never blocks
+[TEST] S1-U10 PASS  telemetry_post rejects invalid fields and out-of-range values
+S5: ahead ? (no reading)
+RAW -> R: 2676 [BLACK] | C: 2685 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=15 last=60 from core 1
+monitor: t=3355774216 ms  samples=15  min=0 max=100 avg=56  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+wifi: link status -> joined AP, no IP yet (2)
+wifi: link up, ip=172.20.10.3
+wifi: t=4660 CONNECTING_WIFI -> CONNECTING_MQTT
+RAW -> R: 2797 [BLACK] | C: 2870 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+monitor: batch  n=20 last=10 from core 1
+monitor: t=3355775756 ms  samples=20  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 2842 [BLACK] | C: 2908 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 2883 [BLACK] | C: 2950 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=25 last=40 from core 1
+monitor: t=3355777316 ms  samples=25  min=0 max=100 avg=44  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 2879 [BLACK] | C: 2966 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+monitor: batch  n=30 last=90 from core 1
+RAW -> R: 2901 [BLACK] | C: 2962 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: t=3355778856 ms  samples=30  min=0 max=100 avg=48  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+S5: ahead ? (no reading)
+wifi: t=9660 CONNECTING_MQTT -> RECONNECTING
+S5: ahead ? (no reading)
+RAW -> R: 2926 [BLACK] | C: 2993 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=10000 st=RECONNECTING pub=0 built=86 bl=16/16(max 16) bl_drop=70 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=100 bad=0 delay_last=1 max=1241 >50ms=14 polls=422 gap_max=259506 us gaps>50ms=1 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+wifi: t=10160 RECONNECTING -> CONNECTING_WIFI
+wifi: t=10160 CONNECTING_WIFI -> CONNECTING_MQTT
+S5: ahead ? (no reading)
+monitor: batch  n=35 last=60 from core 1
+monitor: t=3355780416 ms  samples=35  min=0 max=100 avg=52  free slots=4  free blocks=4
+RAW -> R: 2928 [BLACK] | C: 3003 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 2939 [BLACK] | C: 3006 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=40 last=10 from core 1
+monitor: t=3355781956 ms  samples=40  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 2939 [BLACK] | C: 2995 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=13000 backlog full, dropped oldest (total 100)
+S5: ahead ? (no reading)
+monitor: batch  n=45 last=40 from core 1
+monitor: t=3355783516 ms  samples=45  min=0 max=100 avg=46  free slots=4  free blocks=4
+RAW -> R: 2956 [BLACK] | C: 3016 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 2955 [BLACK] | C: 3021 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=15160 CONNECTING_MQTT -> RECONNECTING
+monitor: batch  n=50 last=90 from core 1
+monitor: t=3355785056 ms  samples=50  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 2945 [BLACK] | C: 3008 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=16160 RECONNECTING -> CONNECTING_WIFI
+wifi: t=16160 CONNECTING_WIFI -> CONNECTING_MQTT
+S5: ahead ? (no reading)
+monitor: batch  n=55 last=60 from core 1
+monitor: t=3355786616 ms  samples=55  min=0 max=100 avg=51  free slots=4  free blocks=4
+RAW -> R: 2953 [BLACK] | C: 3013 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 2963 [BLACK] | C: 3038 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=60 last=10 from core 1
+monitor: t=3355788156 ms  samples=60  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: LED task resumed, state=RUN, pri=12
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 2973 [BLACK] | C: 3030 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=65 last=40 from core 1
+monitor: t=3355789716 ms  samples=65  min=0 max=100 avg=47  free slots=4  free blocks=4
+RAW -> R: 2972 [BLACK] | C: 3025 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=20000 st=CONNECTING_MQTT pub=0 built=186 bl=16/16(max 16) bl_drop=170 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=200 bad=0 delay_last=1 max=1241 >50ms=14 polls=922 gap_max=259506 us gaps>50ms=1 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 2970 [BLACK] | C: 3028 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=21160 CONNECTING_MQTT -> RECONNECTING
+wifi: link status -> down (0)
+S5: ahead ? (no reading)
+monitor: batch  n=70 last=90 from core 1
+monitor: t=3355791256 ms  samples=70  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 2987 [BLACK] | C: 3019 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=75 last=60 from core 1
+monitor: t=3355792816 ms  samples=75  min=0 max=100 avg=51  free slots=4  free blocks=4
+RAW -> R: 2991 [BLACK] | C: 3030 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=23000 backlog full, dropped oldest (total 200)
+S5: ahead ? (no reading)
+wifi: t=23160 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+wifi: link status -> joined AP, waiting for IP (1)
+S5: ahead ? (no reading)
+RAW -> R: 2987 [BLACK] | C: 3027 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=80 last=10 from core 1
+monitor: t=3355794356 ms  samples=80  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 2987 [BLACK] | C: 3034 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+RAW -> R: 2995 [BLACK] | C: 3045 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=85 last=40 from core 1
+monitor: t=3355795916 ms  samples=85  min=0 max=100 avg=48  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+wifi: link up, ip=172.20.10.3
+wifi: t=26360 CONNECTING_WIFI -> CONNECTING_MQTT
+S5: ahead ? (no reading)
+RAW -> R: 2996 [BLACK] | C: 3036 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=90 last=90 from core 1
+monitor: t=3355797456 ms  samples=90  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+S5: ahead ? (no reading)
+RAW -> R: 2989 [BLACK] | C: 3037 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+RAW -> R: 3000 [BLACK] | C: 3050 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=95 last=60 from core 1
+monitor: t=3355799016 ms  samples=95  min=0 max=100 avg=51  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3003 [BLACK] | C: 3048 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=30000 st=CONNECTING_MQTT pub=0 built=283 bl=16/16(max 16) bl_drop=267 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=300 bad=0 delay_last=1 max=1241 >50ms=16 polls=1409 gap_max=260048 us gaps>50ms=2 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+S5: ahead ? (no reading)
+monitor: batch  n=100 last=10 from core 1
+monitor: t=3355800556 ms  samples=100  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3001 [BLACK] | C: 3057 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=31360 CONNECTING_MQTT -> RECONNECTING
+wifi: link status -> down (0)
+S5: ahead ? (no reading)
+RAW -> R: 3009 [BLACK] | C: 3066 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=105 last=40 from core 1
+monitor: t=3355802116 ms  samples=105  min=0 max=100 avg=48  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3013 [BLACK] | C: 3045 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=33220 backlog full, dropped oldest (total 300)
+S5: ahead ? (no reading)
+monitor: batch  n=110 last=90 from core 1
+monitor: t=3355803656 ms  samples=110  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3016 [BLACK] | C: 3069 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+RAW -> R: 3008 [BLACK] | C: 3052 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=115 last=60 from core 1
+monitor: t=3355805216 ms  samples=115  min=0 max=100 avg=50  free slots=4  free blocks=4
+wifi: t=35360 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+wifi: link status -> joined AP, waiting for IP (1)
+S5: ahead ? (no reading)
+RAW -> R: 3014 [BLACK] | C: 3072 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=120 last=10 from core 1
+monitor: t=3355806756 ms  samples=120  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: LED task resumed, state=RUN, pri=12
+S5: ahead ? (no reading)
+RAW -> R: 3009 [BLACK] | C: 3052 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+        telemetry_q window: 17 msgs dequeued (11 ours + motion speed), 0 over 50 ms, 2 poll gaps over 50 ms, connected=0, state=CONNECTING_WIFI
+[TEST] S1-U11 NOT-RUN  needs SHARE_TELEMETRY (AP + broker); queue path ok=1
+        test-sm: cmd type=1 seq=1 -> ACCEPT
+[TEST] S1-U12 PASS  abort -> flg_safety REMOTE_ABORT + remote_cmd_q, back to SHARE_TELEMETRY
+        test-sm: cmd type=1 seq=1 -> DUPLICATE
+[TEST] S1-U13 PASS  duplicate abort: nothing posted, no flag
+        test-sm: cmd type=0 seq=0 -> BAD_LENGTH
+[TEST] S1-U14 PASS  malformed (2-byte) payload: nothing posted
+        test-sm: cmd type=0 seq=0 -> UNKNOWN
+[TEST] S1-U15 PASS  unknown command (type 0, valid CRC): nothing posted
+        test-sm: cmd type=2 seq=2 -> ACCEPT
+[TEST] S1-U16 PASS  pause -> remote_cmd_q only
+        test-sm: cmd type=3 seq=3 -> ESTOP_LATCHED
+[TEST] S1-U17 PASS  resume while ESTOP latched: nothing posted
+        test-sm: cmd type=3 seq=3 -> ACCEPT
+[TEST] S1-U18 PASS  resume after the local ESTOP reset -> remote_cmd_q
+        test-sm: cmd type=3 seq=1 -> STALE
+[TEST] S1-U19 PASS  resume with an old sequence number: nothing posted
+        live backlog max=16 dropped=336 frames built=352 published=0
+[TEST] S1-U20 PASS  outbound backlog never exceeds 16 frames
+        fault-bit stress: errors main=0 helper=0
+[TEST] S1-U21 PASS  two tasks toggling different fault bits 5000x: no bit lost
+[TEST] S1-U22 PASS  flg_fault holds only defined bits; B1 never stores ESTOP there
+S5: ahead ? (no reading)
+RAW -> R: 3022 [BLACK] | C: 3064 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=125 last=40 from core 1
+monitor: t=3355808316 ms  samples=125  min=0 max=100 avg=48  free slots=4  free blocks=4
+wifi: link up, ip=172.20.10.3
+wifi: t=38600 CONNECTING_WIFI -> CONNECTING_MQTT
+S5: ahead ? (no reading)
+RAW -> R: 3024 [BLACK] | C: 3053 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+monitor: batch  n=130 last=90 from core 1
+RAW -> R: 3019 [BLACK] | C: 3063 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: t=3355809856 ms  samples=130  min=0 max=100 avg=49  free slots=4  free blocks=4
+wifi: stats t=40000 st=CONNECTING_MQTT pub=0 built=381 bl=16/16(max 16) bl_drop=365 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=410 bad=0 delay_last=3 max=1241 >50ms=18 polls=1895 gap_max=279729 us gaps>50ms=3 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+S5: ahead ? (no reading)
+RAW -> R: 3046 [BLACK] | C: 3091 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=135 last=60 from core 1
+monitor: t=3355811416 ms  samples=135  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3015 [BLACK] | C: 3059 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3018 [BLACK] | C: 3068 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=140 last=10 from core 1
+monitor: t=3355812956 ms  samples=140  min=0 max=100 avg=50  free slots=4  free blocks=4
+wifi: t=43440 backlog full, dropped oldest (total 400)
+S5: ahead ? (no reading)
+wifi: t=43600 CONNECTING_MQTT -> RECONNECTING
+wifi: link status -> down (0)
+RAW -> R: 3024 [BLACK] | C: 3080 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=145 last=40 from core 1
+monitor: t=3355814516 ms  samples=145  min=0 max=100 avg=48  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3030 [BLACK] | C: 3064 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3032 [BLACK] | C: 3053 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=150 last=90 from core 1
+monitor: t=3355816056 ms  samples=150  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+S5: ahead ? (no reading)
+RAW -> R: 3029 [BLACK] | C: 3081 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+        jitter probe core0 pri15: 1000 cycles, period min=8100 max=11765 us, jitter=1900 us, missed=0; Wi-Fi during probe: state=RECONNECTING, reconnect attempts +0, frames built +102
+[TEST] S1-U23 PASS  10 ms loop on the Wi-Fi core: jitter <= 5 ms, no missed cycle (10 s)
+        radio: init=0 ready=1 link_status=0 ip=172.20.10.3 polls=2262
+        wifi sm: state=RECONNECTING attempts=5 link_downs=0 published=0 built=455 backlog=16/16 dropped=439 det_max=0 ms rec_max=0 ms
+[TEST] S1-U24 PASS  radio up, state machine running, 10 Hz frames built, backlog bounded
+wifi: t=47600 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+        WATCHDOG TICK=260c (expect 20c); tk_dly_tsk(100) = 107876 110005 110003 us on TIMER
+[TEST] S1-U25 PASS  TIMER runs at 1 MHz: tk_dly_tsk(100) = 100..125 ms on it, tick generator = 12 cycles
+[TEST] subsystem1 SUMMARY 23 passed, 0 failed
+[TEST] S2-U01 PASS  sample values stay within 0..100
+[TEST] S2-U02 PASS  free slots and free blocks within pool size
+[BUDDY 2] Received command: H
+[BUDDY 2] Received command: C
+
+motion: emergency stop cleared.
+motion: motion commands can be accepted again.
+monitor: batch  n=155 last=60 from core 1
+monitor: t=3355817596 ms  samples=155  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+[TEST] S2-U03 PASS  motion_cmd_q: 1-byte commands, 4 deep, empty
+wifi: link status -> joined AP, waiting for IP (1)
+RAW -> R: 3024 [BLACK] | C: 3061 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+        motion_task id=5 pri=10, 3 ms after a tick: waiting 20, running/ready 0 of 20
+[TEST] S2-U04 PASS  motion_task runs at priority 10 and sleeps between ticks
+[TEST] S2-U05 PASS  motion_cmd_post rejects unknown command codes
+        PWM slice4 csr=1 div=10 top=6249, slice5 csr=1 div=10 top=6249
+[TEST] S2-U06 PASS  motor PWM: GP8-11 on slices 4/5, enabled, divider 1, 20 kHz
+S5: ahead ? (no reading)
+[TEST] S2-U07 PASS  idle: all four motor outputs at 0 (brake) for 200 ms
+        encoders: L=0 R=64 pulses, PROC1_INTE0=88000000
+[TEST] S2-U08 PASS  encoders GP6/GP7: SIO input, pull-up, rising-edge IRQ on core 1
+[BUDDY 2] Received command: F
+motion: movement rejected: safety ESTOP latched.
+[BUDDY 2] Received command: L
+motion: movement rejected: safety ESTOP latched.
+S5: ahead ? (no reading)
+RAW -> R: 3027 [BLACK] | C: 3070 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+[BUDDY 2] Received command: R
+motion: movement rejected: safety ESTOP latched.
+monitor: batch  n=160 last=10 from core 1
+monitor: t=3355819156 ms  samples=160  min=0 max=100 avg=50  free slots=4  free blocks=4
+[TEST] S2-U09 PASS  ESTOP latched: F/L/R refused, PWM stays 0, no FLT_MOTOR
+[BUDDY 2] Received command: X
+
+motion: EMERGENCY STOP: Stop command
+motion: motors stopped. Send C to clear.
+[BUDDY 2] Received command: F
+motion: movement rejected: emergency stop active.
+S5: ahead ? (no reading)
+[TEST] S2-U10 PASS  local stop X: forward refused, PWM 0, X is not a fault
+[BUDDY 2] Received command: C
+
+motion: emergency stop cleared.
+motion: motion commands can be accepted again.
+RAW -> R: 3028 [BLACK] | C: 3066 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=50000 st=CONNECTING_WIFI pub=0 built=479 bl=16/16(max 16) bl_drop=463 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=510 bad=0 delay_last=1 max=1241 >50ms=20 polls=2381 gap_max=280404 us gaps>50ms=4 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+S5: ahead ? (no reading)
+[TEST] S2-U11 PASS  clear C: back to IDLE, motors still braked, FLT_MOTOR clear
+        kernel: tk_dly_tsk(10) lasts avg 19956 us, max 20011 us
+S5: ahead ? (no reading)
+wifi: link up, ip=172.20.10.3
+wifi: t=50840 CONNECTING_WIFI -> CONNECTING_MQTT
+monitor: batch  n=165 last=40 from core 1
+monitor: t=3355820716 ms  samples=165  min=0 max=100 avg=49  free slots=4  free blocks=4
+RAW -> R: 3029 [BLACK] | C: 3086 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3029 [BLACK] | C: 3069 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+        motion_task: 200 ticks in 2009602 us (99 per s), missed 0
+[TEST] S2-U13 PASS  motion_task control tick runs at 100 Hz, no missed tick
+monitor: batch  n=170 last=90 from core 1
+monitor: t=3355822256 ms  samples=170  min=0 max=100 avg=49  free slots=4  free blocks=4
+        motion ticks during a 100 ms sleep on core 0: 11 (expect ~10), missed 0
+[TEST] S2-M03 PASS  motion_task keeps ticking (>= 8 of 10) while a priority-1 task spins on core 0
+S5: ahead ? (no reading)
+RAW -> R: 3041 [BLACK] | C: 3092 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+wifi: t=53680 backlog full, dropped oldest (total 500)
+S5: ahead ? (no reading)
+monitor: batch  n=175 last=60 from core 1
+monitor: t=3355823816 ms  samples=175  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 3032 [BLACK] | C: 3084 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+        speed reports dequeued by the Wi-Fi task in 2 s: 20, drops 0, queue delay max 1241 ms
+[TEST] S2-U12 PASS  motion_task posts TQ_FIELD_SPEED at 10 Hz, none dropped
+        S2-M01/M02 not built (S2_TEST_MOTORS=0): motors never driven
+[TEST] subsystem2 SUMMARY 14 passed, 0 failed
+[BUDDY 2] Received command: f
+
+motion: starting continuous FORWARD movement...
+
+motion: EMERGENCY STOP: Encoder timeout
+motion: motors stopped. Send C to clear.
+S5: ahead ? (no reading)
+RAW -> R: 3022 [BLACK] | C: 3063 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=180 last=10 from core 1
+monitor: t=3355825356 ms  samples=180  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: LED task resumed, state=RUN, pri=12
+S5: ahead ? (no reading)
+wifi: t=55840 CONNECTING_MQTT -> RECONNECTING
+wifi: link status -> down (0)
+RAW -> R: 3036 [BLACK] | C: 3069 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+[TEST] INT-01 PASS  samples flow from subsystem 2 to subsystem 3
+[TEST] S3-U01 PASS  min <= max, both within 0..100
+[TEST] subsystem3 SUMMARY 2 passed, 0 failed
+[TEST] S4-U01 PASS  message buffer max line = S4_SUMMARY_MAX
+S5: ahead ? (no reading)
+RAW -> R: 3042 [BLACK] | C: 3072 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=185 last=40 from core 1
+monitor: t=3355826916 ms  samples=185  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3033 [BLACK] | C: 3080 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=190 last=90 from core 1
+monitor: t=3355828456 ms  samples=190  min=0 max=100 avg=49  free slots=4  free blocks=4
+RAW -> R: 3035 [BLACK] | C: 3085 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+wifi: t=59840 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+RAW -> R: 3044 [BLACK] | C: 3068 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+[TEST] INT-02 PASS  summary lines flow from subsystem 3 to subsystem 4
+[TEST] subsystem4 SUMMARY 2 passed, 0 failed
+[TEST] S5-U01 PASS  event word: every field round-trips
+[TEST] S5-U02 PASS  event word: max values kept, too-large values saturate, zero is 0
+[TEST] S5-U03 PASS  lateral x = d*cos(angle), + = right
+[TEST] S5-U04 PASS  servo pulse: 90 deg = centre, ends symmetric, clamps above 180
+[TEST] S5-U05 PASS  centred obstacle: width 20 cm, closest 28 cm @90, TURN_LEFT
+[TEST] S5-U06 PASS  offset obstacle: picks the smaller detour (TURN_RIGHT)
+[TEST] S5-U07 PASS  blocked both sides: REVERSE
+[TEST] S5-U08 PASS  empty sweep: CONTINUE
+[TEST] S5-U09 PASS  object beside the path: CONTINUE
+[TEST] S5-U10 PASS  too close: REVERSE
+[TEST] S5-U11 PASS  short side not clear: TURN_RIGHT
+[TEST] S5-U12 PASS  scan insert: sorted by angle, repeat replaces
+wifi: link status -> joined AP, waiting for IP (1)
+wifi: stats t=60120 st=CONNECTING_WIFI pub=0 built=578 bl=16/16(max 16) bl_drop=562 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=611 bad=0 delay_last=20 max=1241 >50ms=22 polls=2873 gap_max=280404 us gaps>50ms=5 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+monitor: batch  n=195 last=60 from core 1
+monitor: t=3355829996 ms  samples=195  min=0 max=100 avg=50  free slots=4  free blocks=4
+[TEST] S5 info: 206253 us timer counts in 200 ms
+[TEST] S5-U13 PASS  hardware timer runs at 1 MHz
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3036 [BLACK] | C: 3096 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+[TEST] S5 info: 16 pings, 0 answered in 1000 ms
+[TEST] S5-U14 PASS  obstacle task running and pinging (IF-06/07 objects exist)
+[TEST] S5-U15 FAIL  sensor answers (fails if not wired/powered)   (C:/Users/jason/Desktop/Embedded Systems/Project_Code/app_program/subsystem5/subsystem5_test.c:165)
+[TEST] subsystem5 SUMMARY 14 passed, 1 failed
+[TEST] === test run end ===
+S5: ahead ? (no reading)
+monitor: batch  n=200 last=10 from core 1
+monitor: t=3355831556 ms  samples=200  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 3045 [BLACK] | C: 3097 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3058 [BLACK] | C: 3100 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: link up, ip=172.20.10.3
+wifi: t=63100 CONNECTING_WIFI -> CONNECTING_MQTT
+monitor: batch  n=205 last=40 from core 1
+monitor: t=3355833116 ms  samples=205  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+wifi: t=63920 backlog full, dropped oldest (total 600)
+S5: ahead ? (no reading)
+RAW -> R: 3053 [BLACK] | C: 3085 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=210 last=90 from core 1
+monitor: t=3355834656 ms  samples=210  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+RAW -> R: 3053 [BLACK] | C: 3096 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3048 [BLACK] | C: 3078 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=215 last=60 from core 1
+monitor: t=3355836216 ms  samples=215  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3051 [BLACK] | C: 3084 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=220 last=10 from core 1
+monitor: t=3355837756 ms  samples=220  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 3042 [BLACK] | C: 3082 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=68100 CONNECTING_MQTT -> RECONNECTING
+wifi: link status -> down (0)
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3054 [BLACK] | C: 3076 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=225 last=40 from core 1
+monitor: t=3355839316 ms  samples=225  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3048 [BLACK] | C: 3090 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=70120 st=RECONNECTING pub=0 built=678 bl=16/16(max 16) bl_drop=662 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=711 bad=0 delay_last=1 max=1241 >50ms=22 polls=3372 gap_max=280404 us gaps>50ms=5 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+S5: ahead ? (no reading)
+monitor: batch  n=230 last=90 from core 1
+RAW -> R: 3043 [BLACK] | C: 3098 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: t=3355840856 ms  samples=230  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3054 [BLACK] | C: 3084 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=72100 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+S5: ahead ? (no reading)
+wifi: link status -> joined AP, waiting for IP (1)
+monitor: batch  n=235 last=60 from core 1
+monitor: t=3355842416 ms  samples=235  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3059 [BLACK] | C: 3083 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+RAW -> R: 3056 [BLACK] | C: 3109 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=240 last=10 from core 1
+monitor: t=3355843956 ms  samples=240  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: LED task resumed, state=RUN, pri=12
+S5: ahead ? (no reading)
+wifi: t=74180 backlog full, dropped oldest (total 700)
+S5: ahead ? (no reading)
+RAW -> R: 3058 [BLACK] | C: 3096 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: link up, ip=172.20.10.3
+wifi: t=75320 CONNECTING_WIFI -> CONNECTING_MQTT
+S5: ahead ? (no reading)
+monitor: batch  n=245 last=40 from core 1
+monitor: t=3355845516 ms  samples=245  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3057 [BLACK] | C: 3090 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+RAW -> R: 3057 [BLACK] | C: 3102 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=250 last=90 from core 1
+monitor: t=3355847056 ms  samples=250  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3060 [BLACK] | C: 3099 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=255 last=60 from core 1
+monitor: t=3355848616 ms  samples=255  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3064 [BLACK] | C: 3086 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+RAW -> R: 3066 [BLACK] | C: 3089 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=80120 st=CONNECTING_MQTT pub=0 built=775 bl=16/16(max 16) bl_drop=759 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=811 bad=0 delay_last=0 max=1241 >50ms=24 polls=3859 gap_max=280404 us gaps>50ms=6 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+S5: ahead ? (no reading)
+monitor: batch  n=260 last=10 from core 1
+monitor: t=3355850156 ms  samples=260  min=0 max=100 avg=50  free slots=4  free blocks=4
+wifi: t=80320 CONNECTING_MQTT -> RECONNECTING
+wifi: link status -> down (0)
+S5: ahead ? (no reading)
+RAW -> R: 3060 [BLACK] | C: 3083 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=265 last=40 from core 1
+monitor: t=3355851716 ms  samples=265  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3064 [BLACK] | C: 3104 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+RAW -> R: 3068 [BLACK] | C: 3102 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=270 last=90 from core 1
+monitor: t=3355853256 ms  samples=270  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+S5: ahead ? (no reading)
+RAW -> R: 3058 [BLACK] | C: 3087 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=84180 backlog full, dropped oldest (total 800)
+wifi: t=84320 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+S5: ahead ? (no reading)
+wifi: link status -> joined AP, waiting for IP (1)
+S5: ahead ? (no reading)
+monitor: batch  n=275 last=60 from core 1
+monitor: t=3355854816 ms  samples=275  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 3170 [BLACK] | C: 3198 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+RAW -> R: 3324 [BLACK] | C: 3286 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=280 last=10 from core 1
+monitor: t=3355856356 ms  samples=280  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3331 [BLACK] | C: 3278 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+wifi: link up, ip=172.20.10.3
+wifi: t=87560 CONNECTING_WIFI -> CONNECTING_MQTT
+S5: ahead ? (no reading)
+RAW -> R: 3316 [BLACK] | C: 3260 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=285 last=40 from core 1
+monitor: t=3355857916 ms  samples=285  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3294 [BLACK] | C: 3235 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=290 last=90 from core 1
+monitor: t=3355859456 ms  samples=290  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3291 [BLACK] | C: 3218 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=90120 st=CONNECTING_MQTT pub=0 built=873 bl=16/16(max 16) bl_drop=857 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=911 bad=0 delay_last=0 max=1241 >50ms=26 polls=4345 gap_max=280404 us gaps>50ms=7 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3293 [BLACK] | C: 3226 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=295 last=60 from core 1
+monitor: t=3355861016 ms  samples=295  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3292 [BLACK] | C: 3218 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+wifi: t=92560 CONNECTING_MQTT -> RECONNECTING
+wifi: link status -> down (0)
+monitor: batch  n=300 last=10 from core 1
+monitor: t=3355862556 ms  samples=300  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: LED task resumed, state=RUN, pri=12
+S5: ahead ? (no reading)
+RAW -> R: 3297 [BLACK] | C: 3230 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3300 [BLACK] | C: 3201 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=305 last=40 from core 1
+monitor: t=3355864116 ms  samples=305  min=0 max=100 avg=49  free slots=4  free blocks=4
+wifi: t=94400 backlog full, dropped oldest (total 900)
+S5: ahead ? (no reading)
+RAW -> R: 3310 [BLACK] | C: 3232 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+monitor: batch  n=310 last=90 from core 1
+monitor: t=3355865656 ms  samples=310  min=0 max=100 avg=49  free slots=4  free blocks=4
+RAW -> R: 3301 [BLACK] | C: 3212 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+wifi: t=96560 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+wifi: link status -> joined AP, waiting for IP (1)
+S5: ahead ? (no reading)
+RAW -> R: 3320 [BLACK] | C: 3248 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=315 last=60 from core 1
+monitor: t=3355867216 ms  samples=315  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3303 [BLACK] | C: 3245 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+monitor: batch  n=320 last=10 from core 1
+monitor: t=3355868756 ms  samples=320  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 3317 [BLACK] | C: 3223 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+wifi: link up, ip=172.20.10.3
+wifi: t=99780 CONNECTING_WIFI -> CONNECTING_MQTT
+S5: ahead ? (no reading)
+RAW -> R: 3302 [BLACK] | C: 3233 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=100120 st=CONNECTING_MQTT pub=0 built=970 bl=16/16(max 16) bl_drop=954 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=1011 bad=0 delay_last=0 max=1241 >50ms=28 polls=4831 gap_max=280404 us gaps>50ms=8 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+monitor: batch  n=325 last=40 from core 1
+monitor: t=3355870316 ms  samples=325  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3300 [BLACK] | C: 3209 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+monitor: batch  n=330 last=90 from core 1
+RAW -> R: 3282 [BLACK] | C: 3180 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: t=3355871856 ms  samples=330  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3297 [BLACK] | C: 3181 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=335 last=60 from core 1
+monitor: t=3355873416 ms  samples=335  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 3282 [BLACK] | C: 3205 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+wifi: t=104640 backlog full, dropped oldest (total 1000)
+S5: ahead ? (no reading)
+wifi: t=104780 CONNECTING_MQTT -> RECONNECTING
+wifi: link status -> down (0)
+RAW -> R: 3299 [BLACK] | C: 3203 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=340 last=10 from core 1
+monitor: t=3355874956 ms  samples=340  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3300 [BLACK] | C: 3200 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=345 last=40 from core 1
+monitor: t=3355876516 ms  samples=345  min=0 max=100 avg=49  free slots=4  free blocks=4
+RAW -> R: 3292 [BLACK] | C: 3192 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3304 [BLACK] | C: 3202 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=350 last=90 from core 1
+monitor: t=3355878056 ms  samples=350  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+wifi: t=108780 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+S5: ahead ? (no reading)
+RAW -> R: 3300 [BLACK] | C: 3211 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: link status -> joined AP, waiting for IP (1)
+S5: ahead ? (no reading)
+monitor: batch  n=355 last=60 from core 1
+monitor: t=3355879616 ms  samples=355  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 3299 [BLACK] | C: 3229 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=110120 st=CONNECTING_WIFI pub=0 built=1068 bl=16/16(max 16) bl_drop=1052 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=1111 bad=0 delay_last=0 max=1241 >50ms=31 polls=5317 gap_max=280424 us gaps>50ms=9 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3300 [BLACK] | C: 3214 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=360 last=10 from core 1
+monitor: t=3355881156 ms  samples=360  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: LED task resumed, state=RUN, pri=12
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3339 [BLACK] | C: 3276 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: link up, ip=172.20.10.3
+wifi: t=112080 CONNECTING_WIFI -> CONNECTING_MQTT
+S5: ahead ? (no reading)
+monitor: batch  n=365 last=40 from core 1
+monitor: t=3355882716 ms  samples=365  min=0 max=100 avg=49  free slots=4  free blocks=4
+RAW -> R: 3319 [BLACK] | C: 3269 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3321 [BLACK] | C: 3272 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=370 last=90 from core 1
+monitor: t=3355884256 ms  samples=370  min=0 max=100 avg=49  free slots=4  free blocks=4
+wifi: t=114860 backlog full, dropped oldest (total 1100)
+S5: ahead ? (no reading)
+RAW -> R: 3337 [BLACK] | C: 3270 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=375 last=60 from core 1
+monitor: t=3355885816 ms  samples=375  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 3312 [BLACK] | C: 3256 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3316 [BLACK] | C: 3252 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=117080 CONNECTING_MQTT -> RECONNECTING
+wifi: link status -> down (0)
+S5: ahead ? (no reading)
+monitor: batch  n=380 last=10 from core 1
+monitor: t=3355887356 ms  samples=380  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3325 [BLACK] | C: 3268 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+RAW -> R: 3329 [BLACK] | C: 3267 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=385 last=40 from core 1
+monitor: t=3355888916 ms  samples=385  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3319 [BLACK] | C: 3269 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=120120 st=RECONNECTING pub=0 built=1168 bl=16/16(max 16) bl_drop=1152 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=1211 bad=0 delay_last=1 max=1241 >50ms=31 polls=5816 gap_max=280424 us gaps>50ms=9 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+S5: ahead ? (no reading)
+monitor: batch  n=390 last=90 from core 1
+monitor: t=3355890456 ms  samples=390  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+S5: ahead ? (no reading)
+RAW -> R: 3327 [BLACK] | C: 3252 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=121080 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+wifi: link status -> joined AP, waiting for IP (1)
+S5: ahead ? (no reading)
+RAW -> R: 3332 [BLACK] | C: 3252 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=395 last=60 from core 1
+monitor: t=3355892016 ms  samples=395  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3336 [BLACK] | C: 3242 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=400 last=10 from core 1
+monitor: t=3355893556 ms  samples=400  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3315 [BLACK] | C: 3257 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: link up, ip=172.20.10.3
+wifi: t=124380 CONNECTING_WIFI -> CONNECTING_MQTT
+S5: ahead ? (no reading)
+RAW -> R: 3326 [BLACK] | C: 3253 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=125060 backlog full, dropped oldest (total 1200)
+S5: ahead ? (no reading)
+monitor: batch  n=405 last=40 from core 1
+monitor: t=3355895116 ms  samples=405  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3326 [BLACK] | C: 3247 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=410 last=90 from core 1
+monitor: t=3355896656 ms  samples=410  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3326 [BLACK] | C: 3249 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+RAW -> R: 3313 [BLACK] | C: 3264 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=415 last=60 from core 1
+monitor: t=3355898216 ms  samples=415  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3320 [BLACK] | C: 3268 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+wifi: t=129380 CONNECTING_MQTT -> RECONNECTING
+wifi: link status -> down (0)
+monitor: batch  n=420 last=10 from core 1
+monitor: t=3355899756 ms  samples=420  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: LED task resumed, state=RUN, pri=12
+S5: ahead ? (no reading)
+RAW -> R: 3324 [BLACK] | C: 3273 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=130120 st=RECONNECTING pub=0 built=1266 bl=16/16(max 16) bl_drop=1250 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=1311 bad=0 delay_last=0 max=1241 >50ms=34 polls=6302 gap_max=280424 us gaps>50ms=10 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+S5: ahead ? (no reading)
+RAW -> R: 3317 [BLACK] | C: 3242 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=425 last=40 from core 1
+monitor: t=3355901316 ms  samples=425  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3318 [BLACK] | C: 3253 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+monitor: batch  n=430 last=90 from core 1
+RAW -> R: 3318 [BLACK] | C: 3267 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: t=3355902856 ms  samples=430  min=0 max=100 avg=49  free slots=4  free blocks=4
+wifi: t=133380 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+S5: ahead ? (no reading)
+wifi: link status -> joined AP, waiting for IP (1)
+RAW -> R: 3325 [BLACK] | C: 3262 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=435 last=60 from core 1
+monitor: t=3355904416 ms  samples=435  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3322 [BLACK] | C: 3274 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=135260 backlog full, dropped oldest (total 1300)
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3336 [BLACK] | C: 3261 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=440 last=10 from core 1
+monitor: t=3355905956 ms  samples=440  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+wifi: link up, ip=172.20.10.3
+wifi: t=136640 CONNECTING_WIFI -> CONNECTING_MQTT
+RAW -> R: 3324 [BLACK] | C: 3278 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=445 last=40 from core 1
+monitor: t=3355907516 ms  samples=445  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3328 [BLACK] | C: 3278 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3336 [BLACK] | C: 3278 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=450 last=90 from core 1
+monitor: t=3355909056 ms  samples=450  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+S5: ahead ? (no reading)
+RAW -> R: 3337 [BLACK] | C: 3279 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=140120 st=CONNECTING_MQTT pub=0 built=1364 bl=16/16(max 16) bl_drop=1348 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=1411 bad=0 delay_last=0 max=1241 >50ms=37 polls=6789 gap_max=280424 us gaps>50ms=11 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+monitor: batch  n=455 last=60 from core 1
+monitor: t=3355910616 ms  samples=455  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 3325 [BLACK] | C: 3275 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+wifi: t=141640 CONNECTING_MQTT -> RECONNECTING
+wifi: link status -> down (0)
+S5: ahead ? (no reading)
+RAW -> R: 3332 [BLACK] | C: 3282 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=460 last=10 from core 1
+monitor: t=3355912156 ms  samples=460  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3333 [BLACK] | C: 3260 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+monitor: batch  n=465 last=40 from core 1
+monitor: t=3355913716 ms  samples=465  min=0 max=100 avg=49  free slots=4  free blocks=4
+RAW -> R: 3320 [BLACK] | C: 3254 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3313 [BLACK] | C: 3244 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=145260 backlog full, dropped oldest (total 1400)
+monitor: batch  n=470 last=90 from core 1
+monitor: t=3355915256 ms  samples=470  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+wifi: t=145640 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+wifi: link status -> joined AP, waiting for IP (1)
+RAW -> R: 3312 [BLACK] | C: 3238 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+monitor: batch  n=475 last=60 from core 1
+monitor: t=3355916816 ms  samples=475  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 3317 [BLACK] | C: 3249 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3324 [BLACK] | C: 3243 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=480 last=10 from core 1
+monitor: t=3355918356 ms  samples=480  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: LED task resumed, state=RUN, pri=12
+S5: ahead ? (no reading)
+wifi: link up, ip=172.20.10.3
+wifi: t=148920 CONNECTING_WIFI -> CONNECTING_MQTT
+RAW -> R: 3328 [BLACK] | C: 3243 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3323 [BLACK] | C: 3262 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=485 last=40 from core 1
+monitor: t=3355919916 ms  samples=485  min=0 max=100 avg=49  free slots=4  free blocks=4
+wifi: stats t=150120 st=CONNECTING_MQTT pub=0 built=1462 bl=16/16(max 16) bl_drop=1446 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=1511 bad=0 delay_last=1 max=1241 >50ms=39 polls=7275 gap_max=280424 us gaps>50ms=12 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3333 [BLACK] | C: 3308 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=490 last=90 from core 1
+monitor: t=3355921456 ms  samples=490  min=0 max=100 avg=49  free slots=4  free blocks=4
+RAW -> R: 3338 [BLACK] | C: 3299 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3333 [BLACK] | C: 3283 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=495 last=60 from core 1
+monitor: t=3355923016 ms  samples=495  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+wifi: t=153920 CONNECTING_MQTT -> RECONNECTING
+S5: ahead ? (no reading)
+wifi: link status -> down (0)
+RAW -> R: 3328 [BLACK] | C: 3270 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=500 last=10 from core 1
+monitor: t=3355924556 ms  samples=500  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 3330 [BLACK] | C: 3296 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+wifi: t=155520 backlog full, dropped oldest (total 1500)
+S5: ahead ? (no reading)
+RAW -> R: 3334 [BLACK] | C: 3289 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=505 last=40 from core 1
+monitor: t=3355926116 ms  samples=505  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3328 [BLACK] | C: 3297 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=510 last=90 from core 1
+monitor: t=3355927656 ms  samples=510  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+wifi: t=157920 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+RAW -> R: 3325 [BLACK] | C: 3284 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+wifi: link status -> joined AP, waiting for IP (1)
+S5: ahead ? (no reading)
+RAW -> R: 3331 [BLACK] | C: 3304 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=515 last=60 from core 1
+monitor: t=3355929216 ms  samples=515  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3337 [BLACK] | C: 3302 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=160120 st=CONNECTING_WIFI pub=0 built=1560 bl=16/16(max 16) bl_drop=1544 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=1611 bad=0 delay_last=0 max=1241 >50ms=41 polls=7761 gap_max=280424 us gaps>50ms=13 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+S5: ahead ? (no reading)
+monitor: batch  n=520 last=10 from core 1
+monitor: t=3355930756 ms  samples=520  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 3334 [BLACK] | C: 3306 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+wifi: link up, ip=172.20.10.3
+wifi: t=161160 CONNECTING_WIFI -> CONNECTING_MQTT
+S5: ahead ? (no reading)
+RAW -> R: 3341 [BLACK] | C: 3284 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=525 last=40 from core 1
+monitor: t=3355932316 ms  samples=525  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3328 [BLACK] | C: 3285 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=530 last=90 from core 1
+RAW -> R: 3340 [BLACK] | C: 3282 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: t=3355933856 ms  samples=530  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3334 [BLACK] | C: 3269 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=535 last=60 from core 1
+monitor: t=3355935416 ms  samples=535  min=0 max=100 avg=50  free slots=4  free blocks=4
+wifi: t=165700 backlog full, dropped oldest (total 1600)
+S5: ahead ? (no reading)
+RAW -> R: 3341 [BLACK] | C: 3289 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=166160 CONNECTING_MQTT -> RECONNECTING
+wifi: link status -> down (0)
+S5: ahead ? (no reading)
+RAW -> R: 3345 [BLACK] | C: 3299 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=540 last=10 from core 1
+monitor: t=3355936956 ms  samples=540  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: LED task resumed, state=RUN, pri=12
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3344 [BLACK] | C: 3301 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=545 last=40 from core 1
+monitor: t=3355938516 ms  samples=545  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3334 [BLACK] | C: 3291 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+RAW -> R: 3343 [BLACK] | C: 3291 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=170120 st=RECONNECTING pub=0 built=1660 bl=16/16(max 16) bl_drop=1644 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=1711 bad=0 delay_last=1 max=1241 >50ms=41 polls=8260 gap_max=280424 us gaps>50ms=13 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+S5: ahead ? (no reading)
+wifi: t=170160 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+monitor: batch  n=550 last=90 from core 1
+monitor: t=3355940056 ms  samples=550  min=0 max=100 avg=49  free slots=4  free blocks=4
+wifi: link status -> joined AP, waiting for IP (1)
+S5: ahead ? (no reading)
+RAW -> R: 3339 [BLACK] | C: 3302 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=555 last=60 from core 1
+monitor: t=3355941616 ms  samples=555  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3333 [BLACK] | C: 3269 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+RAW -> R: 3346 [BLACK] | C: 3294 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=560 last=10 from core 1
+monitor: t=3355943156 ms  samples=560  min=0 max=100 avg=50  free slots=4  free blocks=4
+wifi: link up, ip=172.20.10.3
+wifi: t=173460 CONNECTING_WIFI -> CONNECTING_MQTT
+S5: ahead ? (no reading)
+RAW -> R: 3340 [BLACK] | C: 3292 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=565 last=40 from core 1
+monitor: t=3355944716 ms  samples=565  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3331 [BLACK] | C: 3301 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+wifi: t=175940 backlog full, dropped oldest (total 1700)
+RAW -> R: 3341 [BLACK] | C: 3300 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=570 last=90 from core 1
+monitor: t=3355946256 ms  samples=570  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+S5: ahead ? (no reading)
+RAW -> R: 3341 [BLACK] | C: 3285 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+monitor: batch  n=575 last=60 from core 1
+monitor: t=3355947816 ms  samples=575  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 3330 [BLACK] | C: 3284 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=178460 CONNECTING_MQTT -> RECONNECTING
+wifi: link status -> down (0)
+S5: ahead ? (no reading)
+RAW -> R: 3333 [BLACK] | C: 3293 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=580 last=10 from core 1
+monitor: t=3355949356 ms  samples=580  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3333 [BLACK] | C: 3301 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=180120 st=RECONNECTING pub=0 built=1757 bl=16/16(max 16) bl_drop=1741 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=1811 bad=0 delay_last=0 max=1241 >50ms=43 polls=8746 gap_max=280424 us gaps>50ms=14 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3334 [BLACK] | C: 3286 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=585 last=40 from core 1
+monitor: t=3355950916 ms  samples=585  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3334 [BLACK] | C: 3298 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+wifi: t=182460 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+monitor: batch  n=590 last=90 from core 1
+monitor: t=3355952456 ms  samples=590  min=0 max=100 avg=49  free slots=4  free blocks=4
+wifi: link status -> joined AP, waiting for IP (1)
+S5: ahead ? (no reading)
+RAW -> R: 3342 [BLACK] | C: 3285 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3349 [BLACK] | C: 3304 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=595 last=60 from core 1
+monitor: t=3355954016 ms  samples=595  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3338 [BLACK] | C: 3273 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=600 last=10 from core 1
+monitor: t=3355955556 ms  samples=600  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: LED task resumed, state=RUN, pri=12
+S5: ahead ? (no reading)
+wifi: link up, ip=172.20.10.3
+wifi: t=185760 CONNECTING_WIFI -> CONNECTING_MQTT
+RAW -> R: 3335 [BLACK] | C: 3286 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=186140 backlog full, dropped oldest (total 1800)
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3341 [BLACK] | C: 3286 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=605 last=40 from core 1
+monitor: t=3355957116 ms  samples=605  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3348 [BLACK] | C: 3306 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+monitor: batch  n=610 last=90 from core 1
+monitor: t=3355958656 ms  samples=610  min=0 max=100 avg=49  free slots=4  free blocks=4
+RAW -> R: 3345 [BLACK] | C: 3299 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3344 [BLACK] | C: 3302 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=190120 st=CONNECTING_MQTT pub=0 built=1855 bl=16/16(max 16) bl_drop=1839 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=1911 bad=0 delay_last=0 max=1241 >50ms=45 polls=9233 gap_max=280424 us gaps>50ms=15 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+monitor: batch  n=615 last=60 from core 1
+monitor: t=3355960216 ms  samples=615  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+wifi: t=190760 CONNECTING_MQTT -> RECONNECTING
+wifi: link status -> down (0)
+RAW -> R: 3344 [BLACK] | C: 3285 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+monitor: batch  n=620 last=10 from core 1
+monitor: t=3355961756 ms  samples=620  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 3333 [BLACK] | C: 3303 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3340 [BLACK] | C: 3285 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=625 last=40 from core 1
+monitor: t=3355963316 ms  samples=625  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3341 [BLACK] | C: 3302 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+wifi: t=194760 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+monitor: batch  n=630 last=90 from core 1
+RAW -> R: 3369 [BLACK] | C: 3275 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: t=3355964856 ms  samples=630  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+wifi: link status -> joined AP, waiting for IP (1)
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3352 [BLACK] | C: 3310 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=196340 backlog full, dropped oldest (total 1900)
+S5: ahead ? (no reading)
+monitor: batch  n=635 last=60 from core 1
+monitor: t=3355966416 ms  samples=635  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 3341 [BLACK] | C: 3315 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3337 [BLACK] | C: 3290 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: link up, ip=172.20.10.3
+wifi: t=198000 CONNECTING_WIFI -> CONNECTING_MQTT
+monitor: batch  n=640 last=10 from core 1
+monitor: t=3355967956 ms  samples=640  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3330 [BLACK] | C: 3300 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=645 last=40 from core 1
+monitor: t=3355969516 ms  samples=645  min=0 max=100 avg=49  free slots=4  free blocks=4
+RAW -> R: 3332 [BLACK] | C: 3305 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=200120 st=CONNECTING_MQTT pub=0 built=1953 bl=16/16(max 16) bl_drop=1937 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=2011 bad=0 delay_last=1 max=1241 >50ms=47 polls=9719 gap_max=280424 us gaps>50ms=16 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3344 [BLACK] | C: 3289 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=650 last=90 from core 1
+monitor: t=3355971056 ms  samples=650  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3346 [BLACK] | C: 3298 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=655 last=60 from core 1
+monitor: t=3355972616 ms  samples=655  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 3346 [BLACK] | C: 3297 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=203000 CONNECTING_MQTT -> RECONNECTING
+wifi: link status -> down (0)
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3353 [BLACK] | C: 3297 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=660 last=10 from core 1
+monitor: t=3355974156 ms  samples=660  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: LED task resumed, state=RUN, pri=12
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3344 [BLACK] | C: 3288 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=665 last=40 from core 1
+monitor: t=3355975716 ms  samples=665  min=0 max=100 avg=49  free slots=4  free blocks=4
+RAW -> R: 3347 [BLACK] | C: 3306 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+wifi: t=206340 backlog full, dropped oldest (total 2000)
+S5: ahead ? (no reading)
+RAW -> R: 3346 [BLACK] | C: 3309 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=207000 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+wifi: link status -> joined AP, waiting for IP (1)
+S5: ahead ? (no reading)
+monitor: batch  n=670 last=90 from core 1
+monitor: t=3355977256 ms  samples=670  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3338 [BLACK] | C: 3286 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=675 last=60 from core 1
+monitor: t=3355978816 ms  samples=675  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 3336 [BLACK] | C: 3289 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3342 [BLACK] | C: 3289 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=210120 st=CONNECTING_WIFI pub=0 built=2051 bl=16/16(max 16) bl_drop=2035 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=2111 bad=0 delay_last=0 max=1241 >50ms=49 polls=10205 gap_max=280424 us gaps>50ms=17 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+wifi: link up, ip=172.20.10.3
+wifi: t=210240 CONNECTING_WIFI -> CONNECTING_MQTT
+S5: ahead ? (no reading)
+monitor: batch  n=680 last=10 from core 1
+monitor: t=3355980356 ms  samples=680  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3352 [BLACK] | C: 3308 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+RAW -> R: 3338 [BLACK] | C: 3294 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=685 last=40 from core 1
+monitor: t=3355981916 ms  samples=685  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3336 [BLACK] | C: 3280 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=690 last=90 from core 1
+monitor: t=3355983456 ms  samples=690  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+S5: ahead ? (no reading)
+RAW -> R: 3345 [BLACK] | C: 3302 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+RAW -> R: 3340 [BLACK] | C: 3290 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=695 last=60 from core 1
+monitor: t=3355985016 ms  samples=695  min=0 max=100 avg=50  free slots=4  free blocks=4
+wifi: t=215240 CONNECTING_MQTT -> RECONNECTING
+wifi: link status -> down (0)
+S5: ahead ? (no reading)
+RAW -> R: 3352 [BLACK] | C: 3312 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+wifi: t=216580 backlog full, dropped oldest (total 2100)
+monitor: batch  n=700 last=10 from core 1
+monitor: t=3355986556 ms  samples=700  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3337 [BLACK] | C: 3301 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+RAW -> R: 3345 [BLACK] | C: 3296 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=705 last=40 from core 1
+monitor: t=3355988116 ms  samples=705  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3336 [BLACK] | C: 3301 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=219240 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+S5: ahead ? (no reading)
+wifi: link status -> joined AP, waiting for IP (1)
+monitor: batch  n=710 last=90 from core 1
+monitor: t=3355989656 ms  samples=710  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3343 [BLACK] | C: 3292 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=220120 st=CONNECTING_WIFI pub=0 built=2149 bl=16/16(max 16) bl_drop=2133 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=2211 bad=0 delay_last=0 max=1241 >50ms=51 polls=10691 gap_max=280424 us gaps>50ms=18 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+S5: ahead ? (no reading)
+RAW -> R: 3338 [BLACK] | C: 3312 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=715 last=60 from core 1
+monitor: t=3355991216 ms  samples=715  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3349 [BLACK] | C: 3288 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+wifi: link up, ip=172.20.10.3
+wifi: t=222560 CONNECTING_WIFI -> CONNECTING_MQTT
+monitor: batch  n=720 last=10 from core 1
+monitor: t=3355992756 ms  samples=720  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: LED task resumed, state=RUN, pri=12
+S5: ahead ? (no reading)
+RAW -> R: 3339 [BLACK] | C: 3290 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+RAW -> R: 3337 [BLACK] | C: 3299 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=725 last=40 from core 1
+monitor: t=3355994316 ms  samples=725  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3342 [BLACK] | C: 3297 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+monitor: batch  n=730 last=90 from core 1
+RAW -> R: 3336 [BLACK] | C: 3307 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: t=3355995856 ms  samples=730  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+wifi: t=226820 backlog full, dropped oldest (total 2200)
+RAW -> R: 3335 [BLACK] | C: 3302 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+monitor: batch  n=735 last=60 from core 1
+monitor: t=3355997416 ms  samples=735  min=0 max=100 avg=50  free slots=4  free blocks=4
+wifi: t=227560 CONNECTING_MQTT -> RECONNECTING
+wifi: link status -> down (0)
+S5: ahead ? (no reading)
+RAW -> R: 3336 [BLACK] | C: 3282 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3346 [BLACK] | C: 3299 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=740 last=10 from core 1
+monitor: t=3355998956 ms  samples=740  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3336 [BLACK] | C: 3305 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=230120 st=RECONNECTING pub=0 built=2249 bl=16/16(max 16) bl_drop=2233 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=2311 bad=0 delay_last=1 max=1241 >50ms=51 polls=11190 gap_max=280424 us gaps>50ms=18 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+S5: ahead ? (no reading)
+monitor: batch  n=745 last=40 from core 1
+monitor: t=3356000516 ms  samples=745  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3344 [BLACK] | C: 3289 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+wifi: t=231560 RECONNECTING -> CONNECTING_WIFI
+wifi: joining "hide on bush" ...
+wifi: link status -> joined AP, waiting for IP (1)
+S5: ahead ? (no reading)
+RAW -> R: 3351 [BLACK] | C: 3302 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=750 last=90 from core 1
+monitor: t=3356002056 ms  samples=750  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+S5: ahead ? (no reading)
+RAW -> R: 3353 [BLACK] | C: 3312 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+monitor: batch  n=755 last=60 from core 1
+monitor: t=3356003616 ms  samples=755  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 3338 [BLACK] | C: 3313 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+wifi: link up, ip=172.20.10.3
+wifi: t=234780 CONNECTING_WIFI -> CONNECTING_MQTT
+S5: ahead ? (no reading)
+RAW -> R: 3338 [BLACK] | C: 3300 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=760 last=10 from core 1
+monitor: t=3356005156 ms  samples=760  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3337 [BLACK] | C: 3290 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+monitor: batch  n=765 last=40 from core 1
+monitor: t=3356006716 ms  samples=765  min=0 max=100 avg=49  free slots=4  free blocks=4
+RAW -> R: 3338 [BLACK] | C: 3307 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: t=237040 backlog full, dropped oldest (total 2300)
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+RAW -> R: 3346 [BLACK] | C: 3293 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+monitor: batch  n=770 last=90 from core 1
+monitor: t=3356008256 ms  samples=770  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead ? (no reading)
+RAW -> R: 3338 [BLACK] | C: 3289 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+S5: ahead ? (no reading)
+S5: ahead ? (no reading)
+wifi: t=239780 CONNECTING_MQTT -> RECONNECTING
+wifi: link status -> down (0)
+monitor: batch  n=775 last=60 from core 1
+monitor: t=3356009816 ms  samples=775  min=0 max=100 avg=50  free slots=4  free blocks=4
+RAW -> R: 3353 [BLACK] | C: 3286 [BLACK] | Barcode (GP28): 1 | Threshold: 1500
+wifi: stats t=240120 st=RECONNECTING pub=0 built=2346 bl=16/16(max 16) bl_drop=2330 busy=0 downs=0 det_max=0 rec_max=0
+wifi: queue rx=2411 bad=0 delay_last=0 max=1241 >50ms=53 polls=11676 gap_max=280424 us gaps>50ms=19 drain_max=13 drops=0/0/0/0 cmd=0 ok=0
+S5: ahead ? (no reading)
+

@@ -15,6 +15,7 @@
 #include "drv_ultrasonic.h"
 #include "drv_servo.h"
 #include "obstacle_profile.h"
+#include "../subsystem1/subsystem1.h"	/* IF-B1-01: telemetry_post */
 
 /* Stage 1 coarse sweep, logical degrees (0 = right, 90 = ahead).
    Team design (Tribunal 1): 45..135 to fit the sweep budget.  The brief's
@@ -91,6 +92,17 @@ LOCAL void publish(UW state, UW action, BOOL noecho)
 	CHECK(er, "S5 publish");
 	tm_printf((UB*)"S5: event 0x%x  state=%s action=%s\n",
 		  evt, s5_state_name(state), s5_action_name(action));
+
+	/* IF-B1-01: obstacle width for telemetry (TQ_FIELD_OBSTACLE).  Only
+	   once it is measured (DECIDING) or gone (MONITORING); the STOP event
+	   during PROFILING has no width yet.  Never blocks. */
+	if (state != S5_ST_PROFILING) {
+		UW	w = prof.width_cm;
+
+		(void)telemetry_post(TQ_FIELD_OBSTACLE,
+				     prof.detected ? (INT)((w > APP_OBST_CM_MAX) ? APP_OBST_CM_MAX : w)
+						   : (INT)APP_OBST_CM_NA);
+	}
 }
 
 /*
@@ -230,6 +242,7 @@ EXPORT void obstacle_task(INT stacd, void *exinf)
 	UW		ms = 0U;
 	UW		bypass_start = 0U;
 	BOOL		noecho = FALSE;
+	BOOL		hold_sent = FALSE;	/* STOP sent, CONTINUE not yet */
 
 	(void)stacd; (void)exinf;
 
@@ -258,6 +271,25 @@ EXPORT void obstacle_task(INT stacd, void *exinf)
 				}
 			}
 
+			/* Back here after a bypass timeout with the car still
+			   held: release it once the path is clear (the obstacle
+			   may have moved into the 25..35 cm hysteresis band and
+			   so never be confirmed again). */
+			if (hold_sent) {
+				if ((st == US_OUT_OF_RANGE) || ((st == US_OK) && (cm >= S5_CLEAR_CM))) {
+					clear++;
+				} else {
+					clear = 0U;
+				}
+				if (clear >= S5_CLEAR_PINGS) {
+					clear = 0U;
+					tm_printf((UB*)"S5: path clear\n");
+					prof = (S5_PROFILE){0};
+					publish(S5_ST_MONITORING, S5_ACT_CONTINUE, fault_active);
+					hold_sent = FALSE;
+				}
+			}
+
 			/* Two close readings in a row = obstacle confirmed */
 			if ((st == US_OK) && (cm < S5_OBSTACLE_CM)) {
 				confirm++;
@@ -267,6 +299,7 @@ EXPORT void obstacle_task(INT stacd, void *exinf)
 			if (confirm >= S5_CONFIRM_PINGS) {
 				confirm = 0U;
 				ahead_cm = cm;
+				hold_sent = TRUE;	/* the STOP below holds the car */
 				(void)tk_set_flg(flg_obstacle, S5_FLG_OBSTACLE_STOP);
 				prof = (S5_PROFILE){0};
 				prof.detected = TRUE;
@@ -295,6 +328,7 @@ EXPORT void obstacle_task(INT stacd, void *exinf)
 			(void)tk_clr_flg(flg_obstacle, ~S5_FLG_OBSTACLE_STOP);
 
 			if (prof.action == S5_ACT_CONTINUE) {
+				hold_sent = FALSE;	/* CONTINUE just sent */
 				state = S5_ST_MONITORING;
 			} else {
 				clear = 0U;
@@ -319,9 +353,18 @@ EXPORT void obstacle_task(INT stacd, void *exinf)
 			}
 			if (clear >= S5_CLEAR_PINGS) {
 				tm_printf((UB*)"S5: path clear, back to monitoring\n");
+				/* Tell the Vehicle Controller it may drive again
+				   (IF-06: state MONITORING, no obstacle, CONTINUE).
+				   Not sent on the timeout below: the obstacle may
+				   still be there, and MONITORING re-checks it. */
+				prof = (S5_PROFILE){0};
+				publish(S5_ST_MONITORING, S5_ACT_CONTINUE, fault_active);
+				hold_sent = FALSE;
+				clear = 0U;
 				state = S5_ST_MONITORING;
 			} else if (((us_now_us() - bypass_start) / US_PER_MS) >= S5_BYPASS_TMO_MS) {
 				tm_printf((UB*)"S5: bypass timeout, back to monitoring\n");
+				clear = 0U;	/* MONITORING counts clear pings afresh */
 				state = S5_ST_MONITORING;
 			} else {
 				wait_rest_of_period(t0);
