@@ -1,0 +1,92 @@
+S5: obstacle at 8 cm -> STOP, profiling
+S5: event 0x2d020019  state=PROFILING action=STOP
+monitor: batch  n=940 last=10 from core 1
+monitor: t=3356060946 ms  samples=940  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5:   45 deg  17 cm  <- obstacle
+S5:   70 deg  23 cm  <- obstacle
+S5:   75 deg  70 cm
+S5:   90 deg  73 cm
+S5:   110 deg  70 cm
+S5:   135 deg  67 cm
+S5: width=5 cm  closest=17 cm at 45 deg  edges x=7..12 cm
+S5: left  open   clear=67 cm shift=6 cm
+S5: right closed clear=0 cm shift=25 cm
+S5: decision TURN_LEFT  (profile took 1108 ms, 6 points)
+S5: event 0x168442aa  state=DECIDING_DIRECTION action=TURN_LEFT
+S5: path clear, back to monitoring
+S5: ahead 70 cm
+S5: ahead 64 cm
+monitor: batch  n=945 last=40 from core 1
+monitor: t=3356062496 ms  samples=945  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead 68 cm
+S5: ahead 64 cm
+S5: ahead 64 cm
+monitor: batch  n=950 last=90 from core 1
+monitor: t=3356064046 ms  samples=950  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead 17 cm
+S5: obstacle at 16 cm -> STOP, profiling
+S5: event 0x2d040019  state=PROFILING action=STOP
+S5:   45 deg  15 cm  <- obstacle
+S5:   70 deg  14 cm  <- obstacle
+S5:   90 deg  14 cm  <- obstacle
+S5:   110 deg  14 cm  <- obstacle
+S5:   135 deg  14 cm  <- obstacle
+S5: width=19 cm  closest=14 cm at 90 deg  edges x=-9..10 cm
+S5: left  closed clear=0 cm shift=22 cm
+S5: right closed clear=0 cm shift=23 cm
+S5: decision REVERSE  (profile took 938 ms, 5 points)
+S5: event 0x2d0389ca  state=DECIDING_DIRECTION action=REVERSE
+monitor: batch  n=955 last=60 from core 1
+monitor: t=3356065596 ms  samples=955  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: batch  n=960 last=10 from core 1
+monitor: t=3356067146 ms  samples=960  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: LED task resumed, state=RUN, pri=12
+monitor: batch  n=965 last=40 from core 1
+monitor: t=3356068696 ms  samples=965  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: batch  n=970 last=90 from core 1
+monitor: t=3356070246 ms  samples=970  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: bypass timeout, back to monitoring
+S5: obstacle at 15 cm -> STOP, profiling
+S5: event 0x2d03c019  state=PROFILING action=STOP
+S5:   45 deg  15 cm  <- obstacle
+S5:   70 deg  14 cm  <- obstacle
+S5:   90 deg  14 cm  <- obstacle
+S5:   110 deg  15 cm  <- obstacle
+S5:   135 deg  15 cm  <- obstacle
+S5: width=20 cm  closest=14 cm at 90 deg  edges x=-10..10 cm
+S5: left  closed clear=0 cm shift=23 cm
+S5: right closed clear=0 cm shift=23 cm
+S5: decision REVERSE  (profile took 938 ms, 5 points)
+S5: event 0x2d038a4a  state=DECIDING_DIRECTION action=REVERSE
+monitor: batch  n=975 last=60 from core 1
+monitor: t=3356071796 ms  samples=975  min=0 max=100 avg=50  free slots=4  free blocks=4
+monitor: batch  n=980 last=10 from core 1
+monitor: t=3356073346 ms  samples=980  min=0 max=100 avg=50  free slots=4  free blocks=4
+S5: path clear, back to monitoring
+S5: ahead 51 cm
+monitor: batch  n=985 last=40 from core 1
+monitor: t=3356074896 ms  samples=985  min=0 max=100 avg=49  free slots=4  free blocks=4
+S5: ahead 199 cm
+S5: ahead > 200 cm
+S5: obstacle at 18 cm -> STOP, profiling
+S5: event 0x2d048019  state=PROFILING action=STOP
+monitor: batch  n=990 last=90 from core 1
+monitor: t=3356076446 ms  samples=990  min=0 max=100 avg=49  free slots=4  free blocks=4
+monitor: LED task paused, state=WAIT+SUSPEND, pri=13
+S5:   45 deg  18 cm  <- obstacle
+S5:   70 deg  17 cm  <- obstacle
+S5:   90 deg  17 cm  <- obstacle
+S5:   95 deg  200 cm
+S5:   110 deg  200 cm
+S5:   135 deg  58 cm
+S5: width=12 cm  closest=17 cm at 90 deg  edges x=0..12 cm
+S5: left  open   clear=58 cm shift=13 cm
+S5: right closed clear=0 cm shift=25 cm
+S5: decision TURN_LEFT  (profile took 1158 ms, 6 points)
+S5: event 0x2d04462a  state=DECIDING_DIRECTION action=TURN_LEFT
+S5: path clear, back to monitoring
+S5: ahead 6 cm
+S5: obstacle at 6 cm -> STOP, profiling
+S5: event 0x2d018019  state=PROFILING action=STOP
+monitor: batch  n=995 last=60 from core 1
+monitor: t=3356077996 ms  samples=995  min=0 max=100 avg=50  free slots=4  free blocks=4
