@@ -87,6 +87,53 @@ EXPORT void subsystem4_test(void)
 	TEST_CHECK("INT-02", s4_lines_received >= before + 2,
 		   "summary lines flow from subsystem 3 to subsystem 4");
 
+	/* S4-U10: motor fault recovery decisions (pure logic, fake clock in
+	   ms, no motors).  Same function vehicle_task calls every period. */
+	{
+		VC_MOTOR_RECOVERY r = {0};
+		BOOL	ok = TRUE;
+		UW	t = 100000U;
+		UINT	sent = 0U;
+		UINT	i;
+
+		ok &= !vc_motor_recovery_step(&r, FALSE, TRUE, t);	/* no fault */
+		ok &= !vc_motor_recovery_step(&r, TRUE, TRUE, t);	/* fault seen */
+		ok &= !vc_motor_recovery_step(&r, TRUE, TRUE, t + S4_VC_MOTOR_RETRY_MS - 1U);
+		ok &= vc_motor_recovery_step(&r, TRUE, TRUE, t + S4_VC_MOTOR_RETRY_MS);	/* clear #1 */
+		ok &= (r.retries == 1U);
+
+		/* held by something else (pause, obstacle): never clears */
+		t += 10U * S4_VC_MOTOR_RETRY_MS;
+		ok &= !vc_motor_recovery_step(&r, TRUE, FALSE, t);
+		ok &= (r.retries == 1U);
+
+		/* fault keeps coming back: exactly MAX clears, then gives up */
+		for (i = 0U; i < 10U; i++) {
+			t += S4_VC_MOTOR_RETRY_MS;
+			if (vc_motor_recovery_step(&r, TRUE, TRUE, t)) {
+				sent++;
+			}
+		}
+		ok &= (sent == (UINT)S4_VC_MOTOR_MAX_RETRIES - 1U) && r.gave_up &&
+		      r.retries == (UINT)S4_VC_MOTOR_MAX_RETRIES;
+
+		/* fault gone, but not for long enough: still given up */
+		ok &= !vc_motor_recovery_step(&r, FALSE, TRUE, t + S4_VC_MOTOR_OK_MS - 1U);
+		ok &= r.gave_up;
+		/* fault-free for S4_VC_MOTOR_OK_MS: count restarts */
+		ok &= !vc_motor_recovery_step(&r, FALSE, TRUE, t + S4_VC_MOTOR_OK_MS);
+		ok &= !r.gave_up && r.retries == 0U;
+
+		/* clock wrap-around at 2^32 ms */
+		r = (VC_MOTOR_RECOVERY){0};
+		t = 0xFFFFFFFFU - 200U;
+		ok &= !vc_motor_recovery_step(&r, TRUE, TRUE, t);
+		ok &= vc_motor_recovery_step(&r, TRUE, TRUE, t + S4_VC_MOTOR_RETRY_MS);
+
+		TEST_CHECK("S4-U10", ok,
+			   "motor fault: clear after 1 s while allowed, max 3 tries, restart after 5 s OK");
+	}
+
 	/* ============ interim Vehicle Controller + Safety Handler ============ */
 	/* Known start: no ESTOP, no requests, no stale commands or events */
 	(void)tk_clr_flg(flg_safety, 0U);

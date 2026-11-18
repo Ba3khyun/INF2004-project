@@ -72,12 +72,10 @@ EXPORT ER subsystem4_start(void)
 		return tid;
 	}
 	tid = app_start_task(vehicle_task, S4_PRI_VEHICLE, 0, "vehicle_task");
-	if (tid < E_OK) {
-		return tid;
-	}
-#endif
-
-	/* No affinity: the scheduler may run it on either core */
+#else
+	/* Template Monitor example: test build only (INT-02, IF-05).
+	   No affinity: the scheduler may run it on either core */
 	tid = app_start_task(monitor_task, S4_PRI_MONITOR, 0, "monitor_task");
+#endif
 	return (tid < E_OK) ? tid : E_OK;
 }

@@ -46,6 +46,14 @@ IMPORT ID	flg_events;
  *                Obstacle handling is stop-and-wait: the car stays
  *                stopped until subsystem 5 reports the path clear
  *                (action CONTINUE).  No bypass manoeuvre is driven.
+ *                Motor fault recovery: Motion Control latches its own
+ *                emergency stop and sets FLT_MOTOR on an encoder or
+ *                movement timeout, and only MC_CMD_CLEAR releases it.
+ *                While the car is otherwise allowed to drive, the
+ *                controller sends MC_CMD_CLEAR S4_VC_MOTOR_RETRY_MS after
+ *                the fault, at most S4_VC_MOTOR_MAX_RETRIES times; the
+ *                count restarts after S4_VC_MOTOR_OK_MS without a fault.
+ *                A local stop (X, no FLT_MOTOR) is never cleared.
  *
  *  IF-B4-01  S3 -> VC: vc_line_cmd_post(cmd).  Line following posts its
  *            motion commands through the gate instead of straight to
@@ -61,6 +69,24 @@ IMPORT ID	flg_events;
 #define S4_PRI_VEHICLE		PRI_VEHICLE_CTRL	/* 12 */
 #define S4_VC_PERIOD_MS		10	/* = one kernel tick */
 #define S4_VC_STATE_REPORT_MS	1000	/* re-send vehicle state at least this often */
+#define S4_VC_MOTOR_RETRY_MS	1000	/* wait after a motor fault before clearing */
+#define S4_VC_MOTOR_MAX_RETRIES	3	/* then give up: car stays stopped */
+#define S4_VC_MOTOR_OK_MS	5000	/* fault-free time that restarts the count */
+
+/* Motor fault recovery state (vehicle_task; tests use their own copy) */
+typedef struct {
+	BOOL	active;		/* FLT_MOTOR seen and not yet cleared */
+	BOOL	gave_up;	/* S4_VC_MOTOR_MAX_RETRIES used up */
+	UINT	retries;	/* MC_CMD_CLEARs sent since the count restarted */
+	UW	since;		/* ms: fault first seen, or last clear sent */
+	UW	last_fault;	/* ms: last time FLT_MOTOR was seen set */
+} VC_MOTOR_RECOVERY;
+
+/* One controller period: fault = FLT_MOTOR set, allowed = nothing else
+   holds the car (vehicle state DRIVING).  Returns TRUE when the caller
+   should send MC_CMD_CLEAR now (the attempt is already counted). */
+IMPORT BOOL	vc_motor_recovery_step(VC_MOTOR_RECOVERY *r, BOOL fault,
+				       BOOL allowed, UW now);
 
 IMPORT ID	mtx_vc_gate;
 IMPORT ER	vc_line_cmd_post(UB cmd);

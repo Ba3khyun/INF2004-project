@@ -6,7 +6,8 @@
  *	Until Buddy 4's own code lands, these two tasks connect the parts that
  *	already exist:
  *	  Wi-Fi (B1)      remote_cmd_q, SAFETY_REQ_REMOTE_ABORT
- *	  Motion (B2)     motion_cmd_q (MC_CMD_HALT), SAFETY_ESTOP_LATCHED
+ *	  Motion (B2)     motion_cmd_q (MC_CMD_HALT, MC_CMD_CLEAR after a
+ *	                  motor fault), SAFETY_ESTOP_LATCHED, FLT_MOTOR
  *	  Line (B3)       vc_line_cmd_post() = the line gate
  *	  Obstacle (B5)   mbf_obstacle, flg_obstacle
  *	  Telemetry (B1)  TQ_FIELD_VEH_STATE
@@ -131,6 +132,40 @@ EXPORT void safety_task(INT stacd, void *exinf)
 }
 
 /* ------------------------------------------------------------------ */
+/*  Motor fault recovery (see subsystem4.h)                           */
+/* ------------------------------------------------------------------ */
+
+EXPORT BOOL vc_motor_recovery_step(VC_MOTOR_RECOVERY *r, BOOL fault,
+				   BOOL allowed, UW now)
+{
+	if (!fault) {
+		r->active = FALSE;
+		if (r->retries > 0U &&
+		    (UW)(now - r->last_fault) >= (UW)S4_VC_MOTOR_OK_MS) {
+			r->retries = 0U;	/* drove long enough: start over */
+			r->gave_up = FALSE;
+		}
+		return FALSE;
+	}
+
+	r->last_fault = now;
+	if (!r->active) {
+		r->active = TRUE;
+		r->since = now;
+	}
+	if (r->retries >= (UINT)S4_VC_MOTOR_MAX_RETRIES) {
+		r->gave_up = TRUE;
+		return FALSE;
+	}
+	if (!allowed || (UW)(now - r->since) < (UW)S4_VC_MOTOR_RETRY_MS) {
+		return FALSE;
+	}
+	r->retries++;
+	r->since = now;
+	return TRUE;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Vehicle Controller                                                */
 /* ------------------------------------------------------------------ */
 
@@ -171,6 +206,8 @@ EXPORT void vehicle_task(INT stacd, void *exinf)
 	BOOL	obstacle_hold;		/* evt_hold or IF-07 stop bit, this period */
 	BOOL	estop;
 	BOOL	allowed;
+	BOOL	gave_up_reported = FALSE;
+	VC_MOTOR_RECOVERY mrec = {0};
 	UINT	vs;
 	UINT	last_vs = APP_VS_COUNT;	/* "none yet": forces first report */
 	UW	last_report = 0U;
@@ -258,6 +295,24 @@ EXPORT void vehicle_task(INT stacd, void *exinf)
 		}
 
 		now = vc_now_ms();
+
+		/* Motion Control's encoder/movement timeout latches until C.
+		   Release it so line following can drive again; give up if
+		   the stall keeps coming back (wiring, battery, jammed wheel). */
+		if (vc_motor_recovery_step(&mrec,
+					   (ref_ptn(flg_fault) & FLT_MOTOR) != 0U,
+					   allowed, now)) {
+			tm_printf((UB*)"vc: motor fault -- clearing Motion Control"
+				  " (retry %u of %u)\n", mrec.retries,
+				  (UINT)S4_VC_MOTOR_MAX_RETRIES);
+			CHECK(motion_cmd_post(MC_CMD_CLEAR), "vc motion clear");
+		}
+		if (mrec.gave_up && !gave_up_reported) {
+			tm_printf((UB*)"vc: motor fault keeps coming back -- car stays"
+				  " stopped. Check encoders/battery, then reset.\n");
+		}
+		gave_up_reported = mrec.gave_up;
+
 		if (vs != last_vs || (UW)(now - last_report) >= S4_VC_STATE_REPORT_MS) {
 			if (vs != last_vs) {
 				tm_printf((UB*)"vc: state %s\n", vs_name(vs));

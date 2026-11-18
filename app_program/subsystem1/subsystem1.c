@@ -44,9 +44,16 @@ EXPORT ER subsystem1_start(void)
 		return er;
 	}
 
+#if !APP_TEST
+	/* Template LED example: only the test build runs it (S1-U01/U02 and
+	   the monitor's IF-05 check need it).  The car firmware leaves it
+	   off; its objects still exist but nothing uses them. */
+	return E_OK;
+#else
 	tid_led = app_start_task(led_task, S1_PRI_LED, 0, "led_task");
 	if (tid_led < E_OK) {
 		return tid_led;
 	}
 	return tk_sta_cyc(cyc_led);	/* start the cyclic handler now */
+#endif
 }

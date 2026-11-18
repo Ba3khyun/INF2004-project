@@ -86,9 +86,12 @@ EXPORT ER subsystem2_start(void)
 		return tid;
 	}
 
-	/* Pinned to core 1 (TP_PRC2): samples cross to subsystem 3 on core 0 */
+#if APP_TEST
+	/* Template Producer example: test build only (INT-01, S2-U02).
+	   Pinned to core 1 (TP_PRC2): samples cross to subsystem 3 on core 0 */
 	tid = app_start_task(producer_task, S2_PRI_PRODUCER, TP_PRC2,
 			     "producer_task");
+#endif
 	return (tid < E_OK) ? tid : E_OK;
 }
 
