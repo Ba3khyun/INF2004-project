@@ -14,6 +14,9 @@
 #include "../../subsystem4/subsystem4.h"
 #include "../../vehicle_controller/vehicle_controller.h"
 
+/* Test-only driver entry point; uses a disposable event flag, never the I2C bus. */
+extern INT b4_i2c0_bounded_wait_test(void);
+
 /* This suite is read-only to all kernel safety flags and motion outputs. */
 static int result(const char *name, int failures)
 {
@@ -98,6 +101,7 @@ int safety_test_suite_run(void)
     failed_groups += result("LIVE INTEGRATION", system_integration_readiness_test_run());
     failed_groups += result("HUMP + TURN SOFTWARE", terrain_turn_integration_test_run());
     failed_groups += result("B2 TURN + SPEED API", motion_bridge_integration_test_run());
+    failed_groups += result("I2C BOUNDED WAIT", b4_i2c0_bounded_wait_test());
     tm_printf((UB*)"[B4-ALL] FINAL: %s (%d / 11 groups failed; MOTOR DISABLED)\n",
               failed_groups ? "FAIL" : "PASS", failed_groups);
     tm_printf((UB*)"[B4-ALL] READINESS=HOLD until live safety / missing Buddy5 / Buddy2 approval.\n");

@@ -12,6 +12,8 @@
 #include "../subsystem2/motion_feedback_math.h"
 
 #define VC_TASK_PERIOD_MS 50
+/* Do not trust a cached valid IMU snapshot after its task stops waking. */
+#define VC_IMU_STALE_TIMEOUT_MS 200U
 #define VC_DEBUG_PRINT APP_DEBUG_VC
 /* MISSING GEOMETRY: the real wheel-centre separation must be measured
  * before interpreting live encoder yaw. 0 disables angle conversion. */
@@ -132,6 +134,10 @@ static void vehicle_controller_task(INT stacd, void *exinf)
 #endif
     UW previous_imu_state = S4_ST_COUNT;
     INT was_ready = 0;
+    UW last_imu_wakeups = s4_diag_wakeups();
+    UW last_imu_progress_ms = 0U;
+    INT imu_progress_seen = 0;
+    INT imu_stale_warned = 0;
     uint32_t last_line_word = 0u;
     /* Independent hump event taps: no imu_evt_q receives here. */
     UW last_hump_start_count = s4_imu_hump_start_count();
@@ -146,9 +152,25 @@ static void vehicle_controller_task(INT stacd, void *exinf)
         INT safe_to_read = (tk_ref_flg(flg_safety, &safety) == E_OK);
         INT time_ok = (tk_get_otm(&otm) == E_OK);
         UW now = time_ok ? (UW)otm.lo : 0U;
-        INT monitor_ready = valid &&
+        UW imu_wakeups = s4_diag_wakeups(); /* monotonic, unlike s4_stat_cycles() */
+        INT imu_fresh;
+        if (time_ok && imu_wakeups != last_imu_wakeups) {
+            last_imu_wakeups = imu_wakeups;
+            last_imu_progress_ms = now;
+            imu_progress_seen = 1;
+        }
+        imu_fresh = time_ok && imu_progress_seen &&
+            (UW)(now - last_imu_progress_ms) <= VC_IMU_STALE_TIMEOUT_MS;
+        /* Sensor state/valid bits may be cached even if I2C is wedged. */
+        INT monitor_ready = imu_fresh && valid &&
             (state == S4_ST_MONITORING || state == S4_ST_HUMP_TRACKING);
         vc_output_t output;
+        if (!imu_fresh && imu_progress_seen && !imu_stale_warned) {
+            tm_printf((UB*)"[VC] WARNING: IMU task stale; cached snapshot rejected; motion remains gated\n");
+            imu_stale_warned = 1;
+        } else if (imu_fresh) {
+            imu_stale_warned = 0;
+        }
 
         if (monitor_ready && !was_ready) {
             vc_core_imu(&vc, VC_IMU_READY, 0U, 0U);
@@ -164,7 +186,7 @@ static void vehicle_controller_task(INT stacd, void *exinf)
             UW done = s4_imu_hump_done_word();
             INT got_start = (starts != last_hump_start_count);
             INT got_done = (done != 0U && done != last_hump_done_word);
-            if (got_start) {
+            if (got_start && imu_fresh) {
                 vc_core_imu(&vc, VC_IMU_HUMP_START, 0U, 0U);
                 last_hump_start_count = starts;
 #if VC_DEBUG_PRINT
@@ -175,7 +197,7 @@ static void vehicle_controller_task(INT stacd, void *exinf)
                 /* State-transition fallback when the tap is not yet seen. */
                 vc_core_imu(&vc, VC_IMU_HUMP_START, 0U, 0U);
             }
-            if (got_done) {
+            if (got_done && imu_fresh) {
                 uint16_t evt = (uint16_t)(done & 0xFFFFU);
                 uint8_t valid = (uint8_t)s4_evt_valid(evt);
                 uint8_t height = (uint8_t)s4_evt_height_mm(evt);

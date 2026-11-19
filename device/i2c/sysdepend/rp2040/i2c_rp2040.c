@@ -1,4 +1,4 @@
-﻿/*
+/*
  *----------------------------------------------------------------------
  *    Device Driver for μT-Kernel 3.0
  *
@@ -24,6 +24,84 @@
 #include "../../../include/dev_def.h"
 
 #define I2C_CORE_DEBUG_PRINT 0 // Added: Set to 1 to enable debug printing of I2C core information, 0 to disable.
+
+/*
+ * B4 I2C0 bounded completion wait, diagnostic / motor-disabled build.
+ * Earlier SMP traces showed the I2C completion flag wait remaining blocked
+ * for >27 seconds despite a short kernel timeout. Polling with TMO_POL
+ * prevents this transaction from relying on the RTOS timer event queue.
+ * This isolates the failure mechanism; it does NOT prove the kernel cause.
+ * Switch off after investigating and validating the underlying timeout path.
+ */
+#ifndef I2C0_HW_BOUNDED_WAIT
+#define I2C0_HW_BOUNDED_WAIT 1
+#endif
+#ifndef I2C0_HW_PHASE_TIMEOUT_US
+#define I2C0_HW_PHASE_TIMEOUT_US 8000U
+#endif
+
+
+/* One-shot verification exercises this SAME helper on a disposable flag.
+ * Normal driver calls use inject_after_us=0 (never synthesize completion). */
+static ER i2c0_wait_bounded(ID flagid, UW inject_after_us, UW *elapsed_us)
+{
+    UINT pattern = 0;
+    UW begin = (*(volatile UW *)0x40054028UL);
+    ER er;
+    BOOL injected = FALSE;
+    do {
+        UW elapsed = (UW)((*(volatile UW *)0x40054028UL) - begin);
+        if (inject_after_us != 0U && !injected && elapsed >= inject_after_us) {
+            (void)tk_set_flg(flagid, 1);
+            injected = TRUE;
+        }
+        er = tk_wai_flg(flagid, 1, TWF_ORW | TWF_BITCLR, &pattern, TMO_POL);
+        if (er != E_TMOUT) break;
+    } while ((UW)((*(volatile UW *)0x40054028UL) - begin) < I2C0_HW_PHASE_TIMEOUT_US);
+    if (elapsed_us != NULL) *elapsed_us = (UW)((*(volatile UW *)0x40054028UL) - begin);
+    return er;
+}
+
+/* Test-only: no real controller registers or IMU completion flags touched. */
+#if defined(APP_TEST) && (APP_TEST == 1) && I2C0_HW_BOUNDED_WAIT
+EXPORT INT b4_i2c0_bounded_wait_test(void)
+{
+    T_CFLG cfg = {0};
+    ID id;
+    UW elapsed = 0;
+    ER er;
+    INT failed = 0;
+    cfg.flgatr = TA_TFIFO;
+    id = tk_cre_flg(&cfg);
+    if (id < E_OK) {
+        tm_printf((UB*)"[B4-I2C] FAIL: cannot create isolated test flag er=%d\n", (INT)id);
+        return 1;
+    }
+    (void)tk_set_flg(id, 1);
+    er = i2c0_wait_bounded(id, 0U, &elapsed);
+    tm_printf((UB*)"[B4-I2C] pre-signalled: er=%d elapsed_us=%u %s\n",
+              (INT)er, (UINT)elapsed, (er == E_OK) ? "PASS" : "FAIL");
+    if (er != E_OK) failed++;
+
+    (void)tk_clr_flg(id, 0);
+    er = i2c0_wait_bounded(id, 0U, &elapsed);
+    tm_printf((UB*)"[B4-I2C] missing completion: er=%d elapsed_us=%u %s\n",
+              (INT)er, (UINT)elapsed,
+              (er == E_TMOUT && elapsed >= I2C0_HW_PHASE_TIMEOUT_US && elapsed < 20000U) ? "PASS" : "FAIL");
+    if (er != E_TMOUT || elapsed < I2C0_HW_PHASE_TIMEOUT_US || elapsed >= 20000U) failed++;
+
+    (void)tk_clr_flg(id, 0);
+    er = i2c0_wait_bounded(id, 1000U, &elapsed);
+    tm_printf((UB*)"[B4-I2C] delayed synthetic completion: er=%d elapsed_us=%u %s\n",
+              (INT)er, (UINT)elapsed,
+              (er == E_OK && elapsed >= 1000U && elapsed < I2C0_HW_PHASE_TIMEOUT_US) ? "PASS" : "FAIL");
+    if (er != E_OK || elapsed < 1000U || elapsed >= I2C0_HW_PHASE_TIMEOUT_US) failed++;
+    (void)tk_del_flg(id);
+    tm_printf((UB*)"[B4-I2C] isolated wait-path checks %s (failed=%d)\n",
+              failed ? "FAIL" : "PASS", failed);
+    return failed;
+}
+#endif
 
 /* RP2040 free-running microsecond timer */
 #define I2C_TIMER_RAWL (*(volatile UW *)0x40054028UL)
@@ -87,6 +165,9 @@ typedef struct {
 	UW abort_source;  /* Diagnostic: I2C transmit-abort reason: ADDED */ 
 } T_I2C_LLDCB;
 LOCAL T_I2C_LLDCB	ll_devcb[DEV_I2C_UNITNM];
+/* Count hardware-deadline expiries, available for future read-only diagnostics. */
+static volatile UW g_i2c_hw_deadline_expiries[DEV_I2C_UNITNM];
+
 
 #if TK_SUPPORT_SMP
 LOCAL T_SPLOCK ll_lock[DEV_I2C_UNITNM];
@@ -323,10 +404,28 @@ LOCAL ER i2c_trans(INT unit, T_I2C_LLDCB *p_cb)
 
 		// ADDED: Measure the time spent waiting for the transaction to complete, and print a diagnostic message if it takes longer than 1000 microseconds.
 		task_core_before = S4_DEBUG_CPUID;
-		err = tk_wai_flg(p_cb->done_flgid, 1,
-						TWF_ORW | TWF_BITCLR,
-						&flgptn,
-						ll_devdat[unit].timout);
+		#if I2C0_HW_BOUNDED_WAIT
+		if (unit == DEV_I2C_0) {
+			/* Only polling for the already-created completion flag.
+			 * TMO_POL cannot block on a lost kernel timer event.
+			 * Unsigned subtraction tolerates the 32-bit us-timer wrap. */
+			UW wait_elapsed = 0U;
+			err = i2c0_wait_bounded(p_cb->done_flgid, 0U, &wait_elapsed);
+			if (err == E_TMOUT) {
+				g_i2c_hw_deadline_expiries[unit]++;
+				/* Only emit a diagnostic on an actual bounded timeout. */
+				tm_printf((UB*)"[I2C0] bounded phase timeout: state=%lu addr=0x%02lX elapsed_us=%lu\n",
+					(unsigned long)p_cb->state,
+					(unsigned long)p_cb->sadr,
+					(unsigned long)wait_elapsed);
+			}
+		} else
+		#endif
+		{
+			err = tk_wai_flg(p_cb->done_flgid, 1,
+					TWF_ORW | TWF_BITCLR, &flgptn,
+					ll_devdat[unit].timout);
+		}
 
 		task_core_after = S4_DEBUG_CPUID;
 
@@ -475,6 +574,11 @@ EXPORT UW dev_i2c_get_abort_source(UW unit)
 }
 
 // ADDED
+EXPORT UW dev_i2c_get_hw_deadline_expiries(UW unit)
+{
+    return (unit < DEV_I2C_UNITNM) ? g_i2c_hw_deadline_expiries[unit] : 0xFFFFFFFFU;
+}
+
 EXPORT UW dev_i2c_get_error_reason(UW unit)
 {
     if (unit >= DEV_I2C_UNITNM) {
