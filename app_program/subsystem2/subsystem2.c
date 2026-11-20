@@ -7,6 +7,7 @@
  */
 
 #include "subsystem2.h"
+#include "motion_control.h"
 
 EXPORT ID	sem_slots;	/* IF-02, see subsystem2.h */
 EXPORT ID	mpf_samples;
@@ -19,6 +20,8 @@ EXPORT ER subsystem2_init(void)
 	T_CSEM	csem = {0};
 	T_CMPF	cmpf = {0};
 	T_CMBF	cmbf = {0};
+	ER er = motor_output_guard_init();
+	if (er < E_OK) return er;
 
 	/* Semaphore: a counter of free "slots".  The producer takes one
 	   (tk_wai_sem) before each sample; the consumer gives one back

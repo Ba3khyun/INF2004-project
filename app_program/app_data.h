@@ -167,7 +167,7 @@ _Static_assert(APP_BITS_FOR(APP_RETRY_MAX + 1u) == APP_RETRY_BITS, "retry width"
 #define FLT_TELEM_OVERFLOW	(1u << 4)	/* B1: telemetry_q or backlog dropped*/
 #define FLT_PROTO_ERROR		(1u << 5)	/* B1: bad version / reserved bits   */
 #define FLT_ESTOP_LATCHED	(1u << 6)	/* Safety (B4/B5), mirrored by B1    */
-#define FLT_COLLISION		(1u << 7)	/* B4 IMU: shock > 2.5 g             */
+#define FLT_COLLISION		(1u << 7)	/* B4: lift/overturn; legacy bit 7    */
 #define FLT_IMU_I2C		(1u << 8)	/* B4 IMU: I2C read failure          */
 #define FLT_LINE_LOST		(1u << 9)	/* B3 Line Following: LINE_FAULT     */
 #define FLT_LINE_NOT_RECOVERED	(1u << 10)	/* B5 Obstacle: bypass recovery fail */
@@ -189,9 +189,13 @@ _Static_assert((FLT_B1_OWNED & ~(uint32_t)FLT_ALL) == 0u, "fault bit outside mas
  *  REQ bits: set by the requesting task, consumed and cleared by Safety.
  *  ESTOP_LATCHED: set and cleared ONLY by Safety (local reset required).
  * --------------------------------------------------------------------- */
-#define SAFETY_REQ_COLLISION	(1u << 0)	/* set by IMU (B4)             */
+#define SAFETY_REQ_COLLISION	(1u << 0)	/* legacy bit: now pickup/overturn (B4) */
 #define SAFETY_REQ_OBSTACLE_STOP (1u << 1)	/* set by Obstacle (B5)        */
 #define SAFETY_REQ_REMOTE_ABORT	(1u << 2)	/* set by Wi-Fi (B1)           */
+/* Updated demo requirement (11 Nov): lift/overturn, not collision.
+ * Legacy aliases retained so all five buddies keep the same wire layout. */
+#define FLT_PICKUP_OVERTURN      FLT_COLLISION
+#define SAFETY_REQ_PICKUP_END   SAFETY_REQ_COLLISION
 #define SAFETY_ESTOP_LATCHED	(1u << 8)	/* Safety only; read by others */
 
 /* =====================================================================
@@ -498,7 +502,7 @@ static inline int app_rcmd_unpack(const uint8_t in[RCMD_MSG_LEN], APP_CMD *c)
 #define TQ_FIELD_NONE		0u	/* invalid */
 #define TQ_FIELD_VEH_STATE	1u	/* Vehicle Controller (B4) */
 #define TQ_FIELD_SPEED		2u	/* Motion Control (B2)     */
-#define TQ_FIELD_HUMP		3u	/* IMU Processing (B4)     */
+#define TQ_FIELD_HUMP		3u	/* B4 VC relays IMU height  */
 #define TQ_FIELD_OBSTACLE	4u	/* Obstacle Scanning (B5)  */
 #define TQ_FIELD_COUNT		5u	/* ids 0..4 (0 invalid)    */
 #define TQ_FIELD_BITS		3u

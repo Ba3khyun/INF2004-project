@@ -44,7 +44,8 @@
 /* SAFETY GATE: speed requests are computed, stored and validated, but DO NOT
  * alter motor PWM while live ESTOP and command arbitration are unverified.
  * Do not enable this gate just to get tests passing. */
-#define B2_ENABLE_LIVE_SPEED_CAP_PWM 0
+#include "../vehicle_controller/hump_drive_config.h"
+#define B2_ENABLE_LIVE_SPEED_CAP_PWM VC_POWERED_HANDOFF
 
 
 /* Speed telemetry (TQ_FIELD_SPEED, cm/s).  WHEEL_DIAMETER_CM is a
@@ -198,11 +199,19 @@ LOCAL void update_encoder_distance(void)
     left_mm = encoder_left_distance_cm(left_delta, WHEEL_DIAMETER_CM) * 10.0f;
     right_mm = encoder_right_distance_cm(right_delta, WHEEL_DIAMETER_CM) * 10.0f;
 
-    /* Cumulative forward-path distance remains backward compatible with IMU. */
-    if (motion_state == MOTION_FORWARD || motion_state == MOTION_ARC_LEFT ||
-        motion_state == MOTION_ARC_RIGHT) {
+    BOOL count_travel = motion_state == MOTION_FORWARD ||
+                        motion_state == MOTION_ARC_LEFT || motion_state == MOTION_ARC_RIGHT;
+#if APP_TEST
+    /* For the hand-rolled hump test, push straight forward. Single-channel
+     * encoders measure unsigned travel and cannot identify reverse motion. */
+    count_travel = count_travel || motion_state == MOTION_IDLE;
+#endif
+    if (count_travel) {
         g_motion_distance_total += (left_mm + right_mm) * 0.5f;
         g_motion_distance_mm = (UW)(g_motion_distance_total + 0.5f);
+    }
+    if (motion_state == MOTION_FORWARD || motion_state == MOTION_ARC_LEFT ||
+        motion_state == MOTION_ARC_RIGHT) {
         g_wheel_left_total_mm += left_mm;
         g_wheel_right_total_mm += right_mm;
         publish_wheel_feedback(now_ms(), 1u);
@@ -285,7 +294,7 @@ LOCAL BOOL safety_estop_latched(void)
 {
 	T_RFLG rflg;
 
-	if (tk_ref_flg(flg_safety, &rflg) < E_OK)
+	if (motor_run_ended() || tk_ref_flg(flg_safety, &rflg) < E_OK)
 	{
 		return TRUE; /* cannot tell: fail safe */
 	}

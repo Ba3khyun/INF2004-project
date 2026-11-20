@@ -55,6 +55,17 @@ Test IDs never change and are never reused, even if a test is dropped.
    the commit you tested (`git rev-parse --short HEAD`), who ran it,
    PASS/FAIL, and the log file. Commit the log and the table together.
 
+## Buddy 4 integration checks
+
+From the project root, run `make -B -C testing/subsystem4/host run` for the IMU math checks. For the controller decisions, compile and run:
+
+```sh
+cc -std=c11 -Iapp_program/vehicle_controller testing/vehicle_controller/test_vehicle_controller_core.c app_program/vehicle_controller/vehicle_controller_core.c -o test_vc
+./test_vc
+```
+
+On the Pico, capture the 12-group `[B4-ALL]` summary and the subsequent live output separately. For each hand-rolled crossing, record the measured hump height, both encoder counts and the `[B4-HUMP-LIVE] DONE` height and validity flag. The `valid` field on a periodic `[B4-LIVE]` line describes the IMU snapshot. The `DONE` flag describes the height measurement. Report powered slowdown and line-gap traversal separately when tested with Buddy 2 and Buddy 3.
+
 ## Videos of tests and demos
 
 A manual test (an LED, a motor, a sensor reacting) is best shown with a short

@@ -61,14 +61,14 @@ int main(void)
     const float m_world[3] = { 0.0f, 0.25f, -0.05f };   /* ~0.25 G north, slight dip */
 
     /* --- conversions --- */
-    CHECK("H-01", NEAR(imu_accel_counts_to_g(8000), 1.0f, 0.001f), "8000 raw counts = 1 g at +-4 g");
-    CHECK("H-02", NEAR(imu_accel_counts_to_g(-8000), -1.0f, 0.001f), "negative counts convert");
+    CHECK("H-01", NEAR(imu_accel_counts_to_g(8000), 0.976f, 0.001f), "8000 raw counts = 0.976 g at +-4 g");
+    CHECK("H-02", NEAR(imu_accel_counts_to_g(-8000), -0.976f, 0.001f), "negative counts convert");
     {
-        int16_t raw[3] = { 1100, -550, 980 };
+        int16_t raw[3] = { 12500, -6250, 12500 };
         float g[3];
         imu_mag_counts_to_gauss(raw, g);
         CHECK("H-03", NEAR(g[0], 1.0f, 0.001f) && NEAR(g[1], -0.5f, 0.001f) && NEAR(g[2], 1.0f, 0.001f),
-              "mag counts -> gauss (XY 1100, Z 980 LSB/G)");
+              "mag counts -> gauss (12500 LSB/G on all axes)");
     }
 
     /* --- pitch / roll / heading recovered from a rotated world --- */
@@ -223,7 +223,7 @@ int main(void)
         /* ramp only, never returns -> timeout, invalid */
         imu_hump_reset(&h);
         started = 0; done_invalid = 0; done_valid = 0;
-        for (i = 0; i < 600; i++) {
+        for (i = 0; i < (int)(IMU_HUMP_ENTRY_SAMPLES + IMU_HUMP_TIMEOUT_SAMPLES + 1U); i++) {
             float pitch = (i < 100) ? slope : 0.0f;
             ev = imu_hump_update(&h, pitch, 1.5f, &peak);
             if (ev == IMU_HUMP_STARTED) { started++; }

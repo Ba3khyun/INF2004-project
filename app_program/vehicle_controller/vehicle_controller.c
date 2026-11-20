@@ -1,35 +1,29 @@
-/* Buddy 4 Vehicle Controller - Phase 3: passive RTOS line-intent observer.
- * Reads IMU and safety; receives Buddy 3 line intents. Sends NO motor commands.
- * Does NOT consume mbf_imu_evt or remote_cmd_q; avoids disrupting S4 tests.
- */
 #include "vehicle_controller.h"
 #include "../app_debug.h"
 #include "../subsystem4/subsystem4.h"
-#include "../subsystem2/subsystem2.h"  /* MC_CMD_* codes only */
+#include "../subsystem2/subsystem2.h"  /* motor commands, wheel feedback and speed cap */
 #define VC_CORE_USE_TEAM_STATE 1
 #include "vehicle_controller_core.h"
 #include "vehicle_controller_motion_adapter.h"
 #include "../subsystem2/motion_feedback_math.h"
+#include "../subsystem1/subsystem1.h"  /* telemetry_post + command encoding */
+#include "../subsystem5/subsystem5.h"  /* obstacle message/flag definitions */
+#include "b4_input_bridge.h"
+#include "hump_drive_config.h"
 
 #define VC_TASK_PERIOD_MS 50
-/* Do not trust a cached valid IMU snapshot after its task stops waking. */
-#define VC_IMU_STALE_TIMEOUT_MS 200U
+#define VC_MAX_IMU_AGE_MS 200u
+/* Existing B1/B5 self-tests consume their own queues. Don't steal test
+ * messages in APP_TEST builds; exercise the pure bridge model instead. */
+#define VC_CONSUME_REAL_INPUTS (!APP_TEST)
 #define VC_DEBUG_PRINT APP_DEBUG_VC
 /* MISSING GEOMETRY: the real wheel-centre separation must be measured
  * before interpreting live encoder yaw. 0 disables angle conversion. */
 #define VC_WHEEL_TRACK_MM 0.0f
 #define VC_ENABLE_TRACK_DISTANCE_YAW 0
-/* This request-only handoff does NOT send a motor command or change PWM:
- * Buddy 2's live PWM application gate stays OFF. */
+/* Buddy 2 applies the request only in powered handoff builds. */
 #define VC_SEND_SPEED_CAP_REQUEST 1
 
-
-/* Phase 5A compile-time integration gates. Buddy 5's live obstacle source,
- * the active ESTOP path and Buddy 2 command arbitration are NOT verified.
- * No code in this module submits commands to Buddy 2, regardless of gates. */
-#define VC5A_B5_SOURCE_VERIFIED 0
-#define VC5A_LIVE_STOP_VERIFIED 0
-#define VC5A_MOTOR_HANDOFF_APPROVED 0
 
 static const vma_codes_t vc5a_codes = {
     MC_CMD_DRIVE_FORWARD, MC_CMD_STEER_LEFT, MC_CMD_STEER_RIGHT,
@@ -37,6 +31,8 @@ static const vma_codes_t vc5a_codes = {
 };
 
 static vc_core_t vc;
+static b4_input_bridge_t g_bridge;
+static UW g_last_pickup_event;
 static volatile UW vc_live_state = APP_VS_INITIALIZING;
 static volatile UW vc_live_output = VC_OUTPUT_HALT;
 static uint32_t vc_candidate_command = MC_CMD_HALT;
@@ -104,10 +100,17 @@ UW vehicle_controller_speed_cap_requested(void)
 { return __atomic_load_n(&vc_speed_cap_request, __ATOMIC_ACQUIRE); }
 UW vehicle_controller_wheel_feedback_seq(void)
 { return __atomic_load_n(&vc_wheel_feedback_seq, __ATOMIC_ACQUIRE); }
+UW vehicle_controller_obstacle_hold(void) { return g_bridge.obstacle_hold; }
+UW vehicle_controller_obstacle_action(void) { return g_bridge.obstacle_action; }
+UW vehicle_controller_remote_consumed(void) { return g_bridge.remote_count; }
+UW vehicle_controller_obstacle_consumed(void) { return g_bridge.obstacle_count; }
+UW vehicle_controller_pickup_terminal(void) { return g_bridge.pickup_terminal; }
 
 ER vehicle_controller_init(void)
 {
     vc_core_init(&vc);
+    b4_input_bridge_init(&g_bridge);
+    g_last_pickup_event = s4_imu_pickup_event_count();
     vc_live_state = APP_VS_INITIALIZING;
     vc_live_output = VC_OUTPUT_HALT;
     __atomic_store_n(&vc_line_word, 0u, __ATOMIC_RELEASE);
@@ -133,11 +136,14 @@ static void vehicle_controller_task(INT stacd, void *exinf)
     UW previous_state = APP_VS_COUNT;
 #endif
     UW previous_imu_state = S4_ST_COUNT;
+#if !APP_TEST
+    UW last_state_telemetry_ms = 0U;
+    UW last_sent_state = APP_VS_COUNT;
+#endif
+#if VC_POWERED_HANDOFF
+    UB last_posted = 0u;
+#endif
     INT was_ready = 0;
-    UW last_imu_wakeups = s4_diag_wakeups();
-    UW last_imu_progress_ms = 0U;
-    INT imu_progress_seen = 0;
-    INT imu_stale_warned = 0;
     uint32_t last_line_word = 0u;
     /* Independent hump event taps: no imu_evt_q receives here. */
     UW last_hump_start_count = s4_imu_hump_start_count();
@@ -152,25 +158,10 @@ static void vehicle_controller_task(INT stacd, void *exinf)
         INT safe_to_read = (tk_ref_flg(flg_safety, &safety) == E_OK);
         INT time_ok = (tk_get_otm(&otm) == E_OK);
         UW now = time_ok ? (UW)otm.lo : 0U;
-        UW imu_wakeups = s4_diag_wakeups(); /* monotonic, unlike s4_stat_cycles() */
-        INT imu_fresh;
-        if (time_ok && imu_wakeups != last_imu_wakeups) {
-            last_imu_wakeups = imu_wakeups;
-            last_imu_progress_ms = now;
-            imu_progress_seen = 1;
-        }
-        imu_fresh = time_ok && imu_progress_seen &&
-            (UW)(now - last_imu_progress_ms) <= VC_IMU_STALE_TIMEOUT_MS;
-        /* Sensor state/valid bits may be cached even if I2C is wedged. */
-        INT monitor_ready = imu_fresh && valid &&
+        INT monitor_ready = valid &&
+            s4_imu_good_sample_age_ms() <= VC_MAX_IMU_AGE_MS &&
             (state == S4_ST_MONITORING || state == S4_ST_HUMP_TRACKING);
         vc_output_t output;
-        if (!imu_fresh && imu_progress_seen && !imu_stale_warned) {
-            tm_printf((UB*)"[VC] WARNING: IMU task stale; cached snapshot rejected; motion remains gated\n");
-            imu_stale_warned = 1;
-        } else if (imu_fresh) {
-            imu_stale_warned = 0;
-        }
 
         if (monitor_ready && !was_ready) {
             vc_core_imu(&vc, VC_IMU_READY, 0U, 0U);
@@ -186,7 +177,14 @@ static void vehicle_controller_task(INT stacd, void *exinf)
             UW done = s4_imu_hump_done_word();
             INT got_start = (starts != last_hump_start_count);
             INT got_done = (done != 0U && done != last_hump_done_word);
-            if (got_start && imu_fresh) {
+            if (!monitor_ready) {
+                /* A stuck I2C task must not deliver old hump events. */
+                last_hump_start_count = starts;
+                last_hump_done_word = done;
+                got_start = 0;
+                got_done = 0;
+            }
+            if (got_start) {
                 vc_core_imu(&vc, VC_IMU_HUMP_START, 0U, 0U);
                 last_hump_start_count = starts;
 #if VC_DEBUG_PRINT
@@ -197,12 +195,18 @@ static void vehicle_controller_task(INT stacd, void *exinf)
                 /* State-transition fallback when the tap is not yet seen. */
                 vc_core_imu(&vc, VC_IMU_HUMP_START, 0U, 0U);
             }
-            if (got_done && imu_fresh) {
+            if (got_done) {
                 uint16_t evt = (uint16_t)(done & 0xFFFFU);
                 uint8_t valid = (uint8_t)s4_evt_valid(evt);
                 uint8_t height = (uint8_t)s4_evt_height_mm(evt);
                 if (s4_evt_type(evt) == S4_EVT_HUMP_DONE) {
                     vc_core_imu(&vc, VC_IMU_HUMP_DONE, valid, height);
+#if !APP_TEST
+                    /* Report valid height only; 63 is telemetry N/A. */
+                    (void)telemetry_post(TQ_FIELD_HUMP,
+                        valid && height <= APP_HUMP_MM_MAX ? (INT)height :
+                        (INT)APP_HUMP_MM_NA);
+#endif
 #if VC_DEBUG_PRINT
                     tm_printf((UB*)"[VC-TERRAIN] HUMP_DONE valid=%u peak=%u mm (NO MOTOR COMMAND)\n",
                               (UINT)valid, (UINT)height);
@@ -218,12 +222,67 @@ static void vehicle_controller_task(INT stacd, void *exinf)
         was_ready = monitor_ready;
         previous_imu_state = (UW)state;
 
+        /* End of demo: irreversible software terminal state until reboot.
+         * Physical ESTOP assertion remains behind the team's separate gate. */
+        {
+            UW pickup = s4_imu_pickup_event_count();
+            if (pickup != g_last_pickup_event && pickup != 0u) {
+                b4_input_bridge_pickup(&g_bridge);
+                vc_core_complete(&vc);
+                g_last_pickup_event = pickup;
+            }
+        }
+#if VC_CONSUME_REAL_INPUTS
+        /* B1 accepted commands, bounded to 4 dequeues per 50 ms cycle. */
+        {
+            unsigned i;
+            for (i = 0u; i < REMOTE_CMD_Q_DEPTH; i++) {
+                UB msg[RCMD_MSG_LEN];
+                APP_CMD cmd;
+                INT n = tk_rcv_mbf(remote_cmd_q, msg, TMO_POL);
+                if (n == E_TMOUT) break;
+                if (n == (INT)RCMD_MSG_LEN && app_rcmd_unpack(msg, &cmd) == APP_OK)
+                    b4_input_bridge_remote(&g_bridge, cmd.type);
+                else if (n < E_OK) break;
+            }
+        }
+        /* Buddy 5's stop flag can clear before bypass. Preserve an
+         * independent hold until a later clear event and fresh line. */
+        {
+            unsigned i;
+            T_RFLG obstacle_flags;
+            ER er = tk_ref_flg(flg_obstacle, &obstacle_flags);
+            if (er == E_OK) {
+                b4_input_bridge_obstacle_flag(&g_bridge,
+                    (obstacle_flags.flgptn & S5_FLG_OBSTACLE_STOP) != 0u,
+                    (obstacle_flags.flgptn & S5_FLG_FAULT_NO_ECHO) != 0u);
+            } else b4_input_bridge_obstacle_flag(&g_bridge, 1, 1);
+            for (i = 0u; i < S5_EVT_DEPTH; i++) {
+                UW word = 0u;
+                INT n = tk_rcv_mbf(mbf_obstacle, &word, TMO_POL);
+                if (n == E_TMOUT) break;
+                if (n == (INT)S5_EVT_MSG_SIZE) {
+                    b4_input_bridge_obstacle(&g_bridge, s5_evt_state(word),
+                                             s5_evt_det(word), s5_evt_action(word));
+                } else if (n < E_OK) break;
+            }
+        }
+#endif
+        /* A stale line cannot release an obstacle hold. */
+        b4_input_bridge_refresh(&g_bridge,
+            vc.line_received && vc.line_visible && time_ok &&
+            ((UW)(now - vc.last_line_ms) <= VC_LINE_TIMEOUT_MS));
+        if (g_bridge.paused) vc_core_pause(&vc);
+        else vc_core_resume(&vc); /* doesn't clear any safety latch */
+
         if (!safe_to_read || !time_ok) {
             vc_core_set_safety(&vc, 1, 1); /* fail closed on RTOS error */
         } else {
             UW req = SAFETY_REQ_COLLISION | SAFETY_REQ_OBSTACLE_STOP |
                      SAFETY_REQ_REMOTE_ABORT;
-            vc_core_set_safety(&vc, (safety.flgptn & req) != 0U,
+            vc_core_set_safety(&vc,
+                              ((safety.flgptn & req) != 0U) ||
+                              b4_input_bridge_halt(&g_bridge),
                               (safety.flgptn & SAFETY_ESTOP_LATCHED) != 0U);
         }
 
@@ -248,7 +307,16 @@ static void vehicle_controller_task(INT stacd, void *exinf)
             vc.line_received && time_ok ? (uint32_t)(now - vc.last_line_ms)
                                        : UINT32_MAX,
             __ATOMIC_RELEASE);
+        vc.travel_mm = motion_get_distance_mm();
         output = vc_core_step(&vc, now);
+#if !APP_TEST
+        if (time_ok && (last_sent_state != (UW)vc.state ||
+                       (UW)(now - last_state_telemetry_ms) >= 1000u)) {
+            (void)telemetry_post(TQ_FIELD_VEH_STATE, (INT)vc.state);
+            last_sent_state = (UW)vc.state;
+            last_state_telemetry_ms = now;
+        }
+#endif
         /* New Buddy 2 interface: read signed wheel progress only.  The
          * inferred sign is based on commanded motion, not quadrature B.
          * No turn angle is trusted until wheel track has been measured. */
@@ -271,17 +339,21 @@ static void vehicle_controller_task(INT stacd, void *exinf)
         {
             UW cap = MC_SPEED_CAP_NORMAL;
             if (!monitor_ready || !safe_to_read || !time_ok ||
+                b4_input_bridge_halt(&g_bridge) ||
                 (safety.flgptn & (SAFETY_REQ_COLLISION |
                   SAFETY_REQ_OBSTACLE_STOP | SAFETY_REQ_REMOTE_ABORT |
                   SAFETY_ESTOP_LATCHED)) != 0u) cap = 0u;
-            else if (vc.hump_active) cap = MC_SPEED_CAP_HUMP;
+            else if (vc.hump_active || (vc.state == VC_LINE_SEARCH && output == VC_OUTPUT_FORWARD)) cap = MC_SPEED_CAP_HUMP;
+#if VC_POWERED_HANDOFF
+            if (output == VC_OUTPUT_HALT) cap = 0u;
+#endif
             __atomic_store_n(&vc_speed_cap_request, cap, __ATOMIC_RELEASE);
 #if VC_SEND_SPEED_CAP_REQUEST
             (void)motion_speed_cap_request(cap); /* request only, no PWM writes */
 #endif
         }
         vc_live_state = (UW)vc.state;
-        /* Passive-only: output is a diagnostic, never sent to motor. */
+        /* Publish the decision in both test and powered builds. */
         vc_live_output = (UW)output;
         {
             vma_inputs_t in = {0};
@@ -289,7 +361,7 @@ static void vehicle_controller_task(INT stacd, void *exinf)
             UW flags = safe_to_read ? safety.flgptn : 0u;
             in.safety_read_ok = safe_to_read;
             in.imu_healthy = monitor_ready;
-            in.safety_request_active = !safe_to_read ||
+            in.safety_request_active = b4_input_bridge_halt(&g_bridge) || !safe_to_read ||
                 ((flags & (SAFETY_REQ_COLLISION |
                     SAFETY_REQ_OBSTACLE_STOP |
                     SAFETY_REQ_REMOTE_ABORT)) != 0u);
@@ -301,19 +373,26 @@ static void vehicle_controller_task(INT stacd, void *exinf)
             p = vma_preview(output, &in, &vc5a_codes);
             __atomic_store_n(&vc_candidate_command,
                              p.candidate_command, __ATOMIC_RELEASE);
+#if VC_POWERED_HANDOFF
+            p.safe_command = p.model_ready ? p.candidate_command : MC_CMD_HALT;
+#endif
             __atomic_store_n(&vc_safe_command,
                              p.safe_command, __ATOMIC_RELEASE);
             __atomic_store_n(&vc_adapter_blockers,
                              p.blockers, __ATOMIC_RELEASE);
-            /* p.candidate_command and p.safe_command are NEVER posted. */
+#if VC_POWERED_HANDOFF
+            UB command = p.safe_command;
+            if (command != last_posted && motion_cmd_post(command) == E_OK)
+                last_posted = command;
+#endif
         }
 
 #if VC_DEBUG_PRINT
         if (vc_live_state != previous_state ||
             (time_ok && (UW)(now - last_log_ms) >= 5000U)) {
-            tm_printf((UB*)"[VC] state=%u line=%u intent=%u output=%u (PASSIVE; no motor commands)\n",
-                      vc_live_state, (UW)vc.line_visible, (UW)vc.intent, vc_live_output);
-            tm_printf((UB*)"[VC-B2] wheel_seq=%u L=%d R=%d age=%ums cap_req=%u%% (PWM CAP OFF)\n",
+            tm_printf((UB*)"[VC] state=%u line=%u intent=%u output=%u powered=%u\n",
+                      vc_live_state, (UW)vc.line_visible, (UW)vc.intent, vc_live_output, (UINT)VC_POWERED_HANDOFF);
+            tm_printf((UB*)"[VC-B2] wheel_seq=%u L=%d R=%d age=%ums cap_req=%u%%\n",
                       (UINT)__atomic_load_n(&vc_wheel_feedback_seq, __ATOMIC_ACQUIRE),
                       (INT)vc_wheel_left_mm, (INT)vc_wheel_right_mm,
                       (UINT)vc_wheel_feedback_age,

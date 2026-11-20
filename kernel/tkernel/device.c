@@ -25,6 +25,35 @@
 /* Lock for device management exclusive control */
 Noinit(EXPORT	FastMLock	knl_DevMgrLock);
 
+/* Buddy 4 read-only device-manager lock diagnostics.
+ * These are snapshots only, not lock or flag operations. */
+#include <tm/tmonitor.h>
+IMPORT void b4_mlock_trace_register(FastMLock *lock);
+IMPORT void b4_mlock_trace_copy(UW *, UW *, UW *, UW *, UW *);
+EXPORT void b4_dm_lock_diag_print(const char *tag)
+{
+    UW stats[11] = {0}, k[16] = {0}, n[16] = {0}, tid[16] = {0}, us[16] = {0};
+    UW i, first, seq;
+    T_RFLG rf;
+    ER er = (knl_DevMgrLock.id > 0) ? tk_ref_flg(knl_DevMgrLock.id, &rf) : E_ID;
+    b4_mlock_trace_copy(stats, k, n, tid, us);
+    tm_printf((UB*)"[B4-DMLOCK] %s lock_flag=%d raw_bits=0x%x wait_count=%d flag_ref=%d pattern=0x%x waiter=%d\n",
+             tag, (INT)knl_DevMgrLock.id, (UINT)knl_DevMgrLock.flg,
+             (INT)knl_DevMgrLock.wai, (INT)er,
+             (UINT)((er == E_OK) ? rf.flgptn : 0U),
+             (INT)((er == E_OK) ? rf.wtsk : 0));
+    tm_printf((UB*)"[B4-DMLOCK] %s seq=%u owner_DM=%u owner_REG=%u acquire=%u/%u release=%u/%u contended=%u/%u last_waiter=%u/%u\n",
+              tag, (UINT)stats[0], (UINT)stats[1], (UINT)stats[2],
+              (UINT)stats[3], (UINT)stats[4], (UINT)stats[5], (UINT)stats[6],
+              (UINT)stats[7], (UINT)stats[8], (UINT)stats[9], (UINT)stats[10]);
+    seq = stats[0]; first = (seq > 8U) ? seq - 7U : 1U;
+    for (i = first; i <= seq; i++) {
+        UW ix = i % 16U;
+        tm_printf((UB*)"[B4-DM-EVENT] %s seq=%u kind=%u slot=%u task=%u us=%u\n",
+             tag, (UINT)i, (UINT)k[ix], (UINT)n[ix], (UINT)tid[ix], (UINT)us[ix]);
+    }
+}
+
 /* Device initial setting information */
 Noinit(EXPORT	T_IDEV		knl_DefaultIDev);
 
@@ -513,6 +542,8 @@ EXPORT ER knl_initialize_devmgr( void )
 	if ( ercd < E_OK ) {
 		goto err_ret;
 	}
+
+    b4_mlock_trace_register(&knl_DevMgrLock);
 
 	/* Generate device registration information table */
 	ercd = initDevCB();

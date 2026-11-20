@@ -51,7 +51,7 @@ int safety_phase4f_checks_run(void)
     B4_CHECK(vc_core_step(&v, 621u) == VC_OUTPUT_HALT && v.state == VC_LINE_SEARCH);
     vc_core_line(&v, VC_INTENT_FORWARD, 700u);
     vc_core_imu(&v, VC_IMU_HUMP_START, 0, 0);
-    B4_CHECK(vc_core_step(&v, 701u) == VC_OUTPUT_HALT && v.state == VC_HUMP_CROSSING);
+    B4_CHECK(vc_core_step(&v, 701u) == VC_OUTPUT_FORWARD && v.state == VC_HUMP_CROSSING);
     vc_core_imu(&v, VC_IMU_HUMP_DONE, 1, 34);
     B4_CHECK(vc_core_step(&v, 702u) == VC_OUTPUT_FORWARD && v.last_hump_mm == 34);
     vc_core_pause(&v);

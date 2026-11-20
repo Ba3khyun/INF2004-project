@@ -12,6 +12,10 @@
 #include "../../vehicle_controller/vehicle_controller_motion_adapter.h"
 #include "../safety_handler.h"
 #include "system_integration_readiness_test.h"
+extern void b4_i2c0_multi_trace_print(const char *checkpoint);
+extern void b4_dm_lock_diag_print(const char *tag);
+extern UW b4_imu_xfer_phase(void), b4_imu_xfer_enter(void), b4_imu_xfer_exit(void);
+extern UW b4_imu_xfer_age_ms(void), b4_imu_xfer_last_er(void);
 
 #define SYS_CHECK(what, condition) do { \
     if (!(condition)) { \
@@ -125,6 +129,11 @@ int system_integration_readiness_test_run(void)
                   (INT)((imu_flag_er == E_OK) ? imu_flag.wtsk : 0));
         print_imu_task_state("AFTER");
     }
+    tm_printf((UB*)"[B4-XFER] phase=%u enter=%u exit=%u age_ms=%u last_er=%d imu_stage=%u\n",
+       (UINT)b4_imu_xfer_phase(), (UINT)b4_imu_xfer_enter(),
+       (UINT)b4_imu_xfer_exit(), (UINT)b4_imu_xfer_age_ms(),
+       (INT)b4_imu_xfer_last_er(), (UINT)s4_diag_stage());
+    b4_dm_lock_diag_print("READINESS_PROBE");
     tick1 = motion_tick_count;
     miss1 = motion_ticks_missed;
     final_safe = vehicle_controller_safe_motion_command();
@@ -179,5 +188,6 @@ int system_integration_readiness_test_run(void)
     tm_printf((UB*)"[B4-SYS] READINESS=HOLD: Buddy5 + live ESTOP + Buddy2 arbitration not verified\n");
     tm_printf((UB*)"[B4-SYS] Buddy1 Wi-Fi transport and remote-command consumption NOT verified\n");
     tm_printf((UB*)"[B4-SYS] No queue receives, motor posts, or shared safety writes performed\n");
+    b4_i2c0_multi_trace_print("READINESS_PROBE");
     return failures;
 }

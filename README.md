@@ -7,6 +7,8 @@ You need a **Raspberry Pi Pico W**, a USB cable, and a computer running
 macOS, Linux, or Windows with **WSL (Ubuntu)**. On Windows, run every
 command below inside the WSL Ubuntu terminal.
 
+For the robot’s subsystem interfaces, the earlier integration notes and the latest handoff changes, see [README_INTEGRATION.md](README_INTEGRATION.md).
+
 ---
 
 ## 1. Set up the Pico C SDK and the compiler
@@ -166,11 +168,7 @@ subfolders, is compiled automatically.
 - **`app_main.c` → `usermain()` is where the program starts.** It first calls
   every subsystem's `subsystemN_init()` (create kernel objects), then every
   `subsystemN_start()` (start tasks). Read its comments first.
-- **One folder per student:** `app_program/subsystem1/` … `subsystem5/`.
-  Subsystems 1–4 hold a working example, one task each (LED, producer,
-  consumer, monitor). Together they use the main micro T-Kernel APIs and
-  pass data between subsystems. Subsystem 5 is an empty template.
-  Replace the examples with your own subsystems.
+- The five subsystem folders contain Wi-Fi, motion, line/barcode, IMU and obstacle scanning. The vehicle controller combines their inputs. See the [integration guide](README_INTEGRATION.md) for interface ownership and motor settings.
 - `subsystemN.h` is that subsystem's public interface: the object IDs and
   data formats the other subsystems may use.
 - `app.h` holds the definitions shared by the whole team.
@@ -186,8 +184,7 @@ between subsystems in **`TEAM.md`**, and record every test in **`testing/`**
 the subsystem tests at power-up. Short videos of tests and demos are shared
 as unlisted YouTube links, listed in **`videos/`**.
 
-Pins: use **GP0–GP22 and GP26–GP28**. GP0/GP1 are free unless your team
-builds with `CRASH_REPORT=1` (section 3), which needs them. Never use
+Pins: use **GP0–GP22 and GP26–GP28**. Buddy 5 uses GP0/GP1 for ultrasonic echo/trigger. Use the USB console with `CRASH_REPORT=0` on the assembled robot. Never use
 GP23/GP24/GP25/GP29: they are wired to the Pico W radio. The Pico W's
 on-board LED is also on the radio, so use an external LED instead.
 

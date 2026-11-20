@@ -23,12 +23,12 @@
 
 /* ---- thresholds: PROVISIONAL, to be tuned with logged data (A4.x) ---- */
 #define IMU_SHOCK_MINOR_G         1.5f   /* A4.7: normal driving must stay below this   */
-#define IMU_SHOCK_CRITICAL_G      2.5f   /* collision -> SAF_COLLISION                  */
+#define IMU_SHOCK_CRITICAL_G      2.5f   /* retained for classification; NOT a demo-end trigger */
 #define IMU_HUMP_ENTRY_DEG        5.0f   /* pitch above this starts a hump              */
 #define IMU_HUMP_EXIT_DEG         2.0f   /* |pitch| below this counts as flat           */
 #define IMU_HUMP_ENTRY_SAMPLES    3U
 #define IMU_HUMP_EXIT_SAMPLES     3U
-#define IMU_HUMP_TIMEOUT_SAMPLES  300U   /* 3 s at 100 Hz                               */
+#define IMU_HUMP_TIMEOUT_SAMPLES  2000U   /* 20 s at 100 Hz                               */
 #define IMU_HUMP_RETURN_FRAC      0.2f   /* height must fall back below 20 % of peak    */
 #define IMU_HUMP_MIN_MM           2.0f   /* smaller peaks are treated as noise          */
 #define IMU_CAL_SAMPLES           200U   /* 2 s at 100 Hz                               */
@@ -96,6 +96,55 @@ imu_cal_result_t imu_cal_finish(const imu_cal_acc_t *c,
 /* ---- shock ---- */
 typedef enum { IMU_SHOCK_NONE = 0, IMU_SHOCK_MINOR, IMU_SHOCK_CRITICAL } imu_shock_t;
 imu_shock_t imu_shock_classify(float magnitude_g);
+
+/* ---- end-of-demo lift/overturn: provisional thresholds ----
+ * IMPORTANT: a perfectly level, stationary lift cannot be distinguished from
+ * normal rest with accelerometer/magnetometer alone. Calibrate the actual demo.
+ * Short transients or a strong tilt may qualify; never infer physical stop. */
+#define IMU_PICKUP_LOW_G          0.65f
+#define IMU_PICKUP_TILT_DEG       60.0f
+#define IMU_PICKUP_LOW_G_SAMPLES  3u     /* 30 ms at 100 Hz */
+#define IMU_PICKUP_TILT_SAMPLES   5u     /* 50 ms at 100 Hz */
+/* Experimental level-lift motion detector (not a true height/contact sensor).
+ * Requires a brief upward acceleration after a near-level posture during the
+ * arming interval. A slow, uniform-speed lift may not produce this signal.
+ * Benchmark thresholds are provisional; test with motors disconnected.
+ */
+#define IMU_LIFT_UP_DELTA_G       0.10f   /* vertical rise vs calibrated gravity */
+#define IMU_LIFT_UP_SAMPLES       4u      /* sustained upward motion, about 40 ms */
+#define IMU_LIFT_ARM_SAMPLES      20u     /* near level for about 200 ms */
+#define IMU_LIFT_MAX_TILT_DEG     20.0f   /* use overturn for large tilt */
+
+typedef enum {
+    IMU_PICKUP_NONE = 0,
+    IMU_PICKUP_LOW_ACCEL = 1,
+    IMU_PICKUP_OVERTURN = 2,
+    IMU_PICKUP_LIFT_MOTION = 3 /* inferred upward movement, not proof of height */
+} imu_pickup_reason_t;
+typedef struct {
+    uint8_t low_count;
+    uint8_t tilt_count;
+    uint8_t latched;
+    uint8_t reason;
+    uint8_t lift_up_count;
+    uint8_t lift_level_count;
+    float baseline_vertical_g;  /* set from stationary calibration before running */
+} imu_pickup_detector_t;
+void imu_pickup_detector_init(imu_pickup_detector_t *d);
+imu_pickup_reason_t imu_pickup_detector_step(imu_pickup_detector_t *d,
+                                             float magnitude_g,
+                                             float pitch_deg,
+                                             float roll_deg);
+/* Run after the existing low-g/overturn step. Supply VEHICLE-frame upward
+ * accelerometer axis, current encoder travel (mm per sample), corrected
+ * pitch/roll. This method is a heuristic; no motion means no evidence.
+ */
+imu_pickup_reason_t imu_pickup_lift_motion_step(imu_pickup_detector_t *d,
+                                               float vertical_accel_g,
+                                               float delta_distance_mm,
+                                               float pitch_deg,
+                                               float roll_deg);
+
 
 /* ---- hump height = running sum of sin(pitch) * distance ---- */
 typedef enum { IMU_HUMP_IDLE = 0, IMU_HUMP_TRACKING } imu_hump_phase_t;

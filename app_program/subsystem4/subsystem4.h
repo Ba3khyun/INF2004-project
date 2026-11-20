@@ -52,6 +52,17 @@ IMPORT volatile UW s4_imu_snapshot;                 /* packed word, see app_data
  * A done word of 0 means no completed hump yet. Reads are 32-bit aligned. */
 IMPORT UW   s4_imu_hump_start_count(void);
 IMPORT UW   s4_imu_hump_done_word(void);
+/* Monotonic good-sample age, independent of s4_stat_reset(); UINT32_MAX
+ * until first successful I2C sample. */
+IMPORT UW   s4_imu_good_sample_age_ms(void);
+IMPORT UW   s4_imu_good_sample_count(void);
+/* End-of-demo pickup/overturn event: sticky until reboot; software only. */
+IMPORT UW   s4_imu_pickup_event_count(void);
+IMPORT UW   s4_imu_pickup_reason(void);
+/* Experimental level-lift motion diagnostics; not a direct height sensor. */
+IMPORT UW   s4_imu_lift_peak_up_mg(void);
+IMPORT UW   s4_imu_lift_up_run(void);
+IMPORT UW   s4_imu_lift_max_run(void);
 IMPORT UW   s4_imu_get_snapshot(void);              /* one aligned 32-bit load     */
 IMPORT s4_imu_state_t s4_imu_state(void);
 IMPORT ER   s4_imu_request_reinit(void);            /* called after Safety reset   */

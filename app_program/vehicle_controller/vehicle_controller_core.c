@@ -35,6 +35,7 @@ void vc_core_imu(vc_core_t *vc, vc_imu_event_t event, uint8_t valid, uint8_t hei
         if (vc->imu_ready && !vc->imu_fault) vc->hump_active = 1;
         break;
     case VC_IMU_HUMP_DONE:
+        vc->gap_armed = 0;
         vc->hump_active = 0;
         vc->last_hump_valid = !!valid;
         vc->last_hump_mm = valid ? height_mm : 0;
@@ -65,41 +66,50 @@ vc_output_t vc_core_step(vc_core_t *vc, uint32_t now_ms)
     if (!vc) return VC_OUTPUT_HALT;
     /* Safety and sensor health dominate all movement intents. */
     if (vc->safety_latched || vc->safety_request || vc->imu_fault) {
+        vc->gap_armed = 0;
         vc->state = VC_ERROR;
         return VC_OUTPUT_HALT;
     }
     if (vc->mission_complete) {
+        vc->gap_armed = 0;
         vc->state = VC_MISSION_COMPLETE;
         return VC_OUTPUT_HALT;
     }
     if (vc->paused) {
+        vc->gap_armed = 0;
         vc->state = VC_PAUSED;
         return VC_OUTPUT_HALT;
     }
     if (!vc->imu_ready) {
+        vc->gap_armed = 0;
         vc->state = VC_INITIALIZING;
         return VC_OUTPUT_HALT;
     }
     stale = !vc->line_received || (uint32_t)(now_ms - vc->last_line_ms) > VC_LINE_TIMEOUT_MS;
     if (stale || vc->intent == VC_INTENT_STOP || vc->intent == VC_INTENT_NONE) {
+        vc->gap_armed = 0;
         vc->state = VC_LINE_SEARCH;
         return VC_OUTPUT_HALT;
     }
-    if (!vc->line_visible) {
+    if (!vc->line_visible || vc->intent == VC_INTENT_LINE_LOST) {
+        uint32_t elapsed = now_ms - vc->visible_ms;
+        uint32_t travel = vc->travel_mm - vc->visible_travel_mm;
+        uint32_t max_ms = vc->hump_active ? VC_HUMP_GAP_MS : VC_APPROACH_GAP_MS;
+        uint32_t max_mm = vc->hump_active ? VC_HUMP_GAP_MM : VC_APPROACH_GAP_MM;
+        if (vc->gap_armed && elapsed <= max_ms && travel <= max_mm) {
+            vc->state = vc->hump_active ? VC_HUMP_CROSSING : VC_LINE_SEARCH;
+            return VC_OUTPUT_FORWARD;
+        }
+        vc->gap_armed = 0;
         vc->state = VC_LINE_SEARCH;
         return VC_OUTPUT_HALT;
     }
-    if (vc->hump_active) {
-        vc->state = VC_HUMP_CROSSING;
-        /* There is no speed control command in Buddy 2's API yet.
-         * HALT is intentionally fail-safe until reduced-speed support exists. */
-        return VC_OUTPUT_HALT;
-    }
-    if (vc->intent == VC_INTENT_LINE_LOST) {
-        vc->state = VC_LINE_SEARCH;
-        return VC_OUTPUT_HALT;
-    }
-    vc->state = VC_DRIVING;
+    vc->visible_ms = vc->last_line_ms;
+    vc->visible_travel_mm = vc->travel_mm;
+    vc->gap_armed = vc->intent == VC_INTENT_FORWARD ||
+                    (vc->hump_active && (vc->intent == VC_INTENT_STEER_LEFT ||
+                                         vc->intent == VC_INTENT_STEER_RIGHT));
+    vc->state = vc->hump_active ? VC_HUMP_CROSSING : VC_DRIVING;
     switch (vc->intent) {
     case VC_INTENT_FORWARD: return VC_OUTPUT_FORWARD;
     case VC_INTENT_STEER_LEFT: return VC_OUTPUT_STEER_LEFT;

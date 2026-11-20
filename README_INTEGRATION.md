@@ -2,13 +2,37 @@
 
 A five-member embedded robotics project running **micro T-Kernel 3.0 on the Raspberry Pi Pico W (RP2040)**. The firmware combines Wi-Fi telemetry, motor and encoder control, IR line following and barcode recognition, an LSM303D IMU, and a Vehicle Controller/Safety Handler. Code is organized into student-owned subsystems and shared RTOS interfaces.
 
-**Documentation scope:** This README describes the **whole repository**, including capabilities already present in branch v1 and changes verified in branch v2 and branch v4. A feature being documented here does **not** imply it was implemented in the most recent commit or by Buddy 4. For ownership, pin claims, and interface agreements, maintain [`TEAM.md`](TEAM.md) separately.
+## Changes teammates need to know
 
-> **Current integration/safety status:** The Vehicle Controller's motor output is **passive**; it does not forward driving commands to Buddy 2. `SH_ENABLE_SHARED_ESTOP_ASSERT` remains **0**. Safety tests validate software policies/read-only behavior, **not a physical emergency stop**. Keep motor power disconnected during software-only validation.
+| Owner | New behavior or interface impact |
+| --- | --- |
+| Buddy 1 · Wi-Fi | In regular builds the controller drains accepted pause, resume and abort messages from `remote_cmd_q`. Resume clears pause only when permitted. Abort stays latched in the bridge. The controller publishes valid hump heights up to 62 mm through `TQ_FIELD_HUMP` and sends 63 for unavailable or out-of-range heights. The wire format is unchanged. |
+| Buddy 2 · Motion | Buddy 4 uses wheel feedback and requests a speed cap through `motion_speed_cap_request()`. A hump requests 45% of the commanded PWM duty. Normal is 100%. Pickup/overturn calls `motion_end_run()` to inhibit drive until reboot. This inhibit also applies with powered forwarding disabled. |
+| Buddy 3 · Line and barcode | Continue publishing steering and visibility through `vehicle_controller_line_motion_post()`. The controller uses those updates to steer across a marked hump or briefly continue straight after losing the line. |
+| Buddy 4 · IMU and vehicle controller | Hump height uses tilt and encoder travel. The IMU can finish early on return to level, with a maximum of 2,000 samples at 100 Hz (20 s). Pickup detection covers low acceleration, overturn and an experimental upward-motion heuristic. In the shared flags, pickup/overturn reuses the legacy collision fault bit 7 and request bit 0. |
+| Buddy 5 · Obstacles | In regular builds the controller reads `flg_obstacle` and drains `mbf_obstacle`. A hold needs a clear monitoring event, healthy sensor and fresh visible line to release. The controller records turn and reverse recommendations. Powered bypass still needs integration. |
+
+This update changes Buddy 2’s subsystem directly. Buddy 4 uses the existing interfaces from Buddies 1, 3 and 5. Shared changes include the pickup flag aliases, live test reporting and I²C/device-manager lock diagnostics.
+
+## Driving with and without a line
+
+With a fresh visible line, the controller continues following the steering intent with a reduced cap during a hump. A fresh report that the line disappeared after straight driving allows forward travel for up to 25 mm and 600 ms. Once the IMU detects a hump, the bounds become 250 mm and 10 s from the last visible line. Exceeding either bound halts forward travel. Stale line messages cause a halt. A hump-done event ends the allowance, and seeing the line again restores line steering.
+
+`app_program/vehicle_controller/hump_drive_config.h` defines the three checks for powered forwarding: Buddy 5 obstacle verification, live ESTOP verification and Buddy 2 motor handoff approval. All default to zero. A regular build requires all three for the controller to post drive commands and Buddy 2 to apply the cap. Test builds keep both paths disabled and leave the Buddy 1 and Buddy 5 queues to their subsystem tests.
+
+## Evidence and outstanding checks
+
+The on-target one-shot suite reports 12 groups. Hand-rolled runs demonstrated climb/descent detection and an accepted 18 mm peak. Other runs reached timeout with an invalid height. For height accuracy, compare accepted readings against the measured course and record rejected attempts too. Powered speed reduction, line reacquisition, obstacle interaction, live remote commands and the physical stop path still need checks on the assembled robot.
+
+## Old integration notes
+
+The sections below preserve the earlier subsystem descriptions, interface decisions, hardware observations and test results. Statements about pending features describe the system at that stage. The current handoff is described above.
+
+> **Earlier integration status:** The Vehicle Controller's motor output is **passive**; it does not forward driving commands to Buddy 2. `SH_ENABLE_SHARED_ESTOP_ASSERT` remains **0**. Safety tests validate software policies/read-only behavior, **not a physical emergency stop**. Keep motor power disconnected during software-only validation.
 
 ## 1. Project status at a glance
 
-| Owner | Module | Present in branch v4 | Status / boundary |
+| Owner | Module | Earlier implementation | Status / boundary |
 | --- | --- | --- | --- |
 | **Buddy 1** | Wi-Fi commands and telemetry — `app_program/subsystem1/` | Wi-Fi/MQTT state machine, telemetry queue/backlog, command parser, remote-abort signaling, optional LED example | Firmware logic exists; live network connection depends on build options and AP/broker setup |
 | **Buddy 2** | Motion/encoders — `app_program/subsystem2/` | Dual-motor PWM, encoder interrupts, wheel-distance/speed calculations, PID helpers, 100 Hz motion task, motor/ESTOP checks | Motor-disabled tests run; physical driving not validated by Buddy 4's suite |
@@ -16,7 +40,7 @@ A five-member embedded robotics project running **micro T-Kernel 3.0 on the Rasp
 | **Buddy 4** | IMU — `app_program/subsystem4/` | LSM303D driver, calibration, heading/pitch/roll, shock/hump event logic, packed snapshot, 100 Hz periodic sampling | Sensor identification/monitoring/timing tests passed on Pico W |
 | **Buddy 4** | Vehicle Controller — `app_program/vehicle_controller/` | State/priority logic and RTOS adapter; atomic line-intent handoff, IMU/safety observations | **Read-only/passive**, no motor commands |
 | **Buddy 4** | Safety Handler — `app_program/safety_handler/` | RTOS observer, sticky software latch, ESTOP policy/bridge models and combined tests | Live shared-ESTOP assertion and reset coordination **not enabled** |
-| **Buddy 5** | Planned obstacle scanning — `app_program/subsystem5/` | Initialization/start stubs and a placeholder test only | **Not yet implemented in uploaded v4 source**; obstacle request exists in shared safety contract/model |
+| **Buddy 5** | Planned obstacle scanning — `app_program/subsystem5/` | Initialization/start stubs and a placeholder test only | **Pending at this stage**; obstacle request exists in shared safety contract/model |
 
 ### Runtime interaction (current versus planned)
 
@@ -90,9 +114,9 @@ The Pico W runs on a Robo Pico / Cytron Maker Pi Pico-style base. Pin allocation
 - A **priority-10, core-1 motion task** is awakened by a **10 ms cyclic handler** (~100 Hz) and receives one-byte commands via `motion_cmd_q`.
 - Supports discrete **F/L/R**, continuous forward/pivot/steering intents, brake/halt and local stop (`X`) / clear (`C`). The task checks `SAFETY_ESTOP_LATCHED` before or during movement and can set `FLT_MOTOR` for timeouts.
 - Reports speed telemetry approximately every **100 ms** (`TQ_FIELD_SPEED`).
-- **Wheel diameter change verified between v1 and v2/v4:** `WHEEL_DIAMETER_CM` changed **6.5f → 6.2f** in `task_motion.c`. Confirm the physical wheel measurement with Buddy 2.
+- **Wheel diameter update:** `WHEEL_DIAMETER_CM` changed **6.5f → 6.2f** in `task_motion.c`. Confirm the physical wheel measurement with Buddy 2.
 
-**Important provenance:** The motor PWM, encoders, interrupt handling, distance helpers, PID utilities and motion task **already exist in the uploaded branch v1**. They are essential project features but **were not newly introduced by the v1→v4 Buddy 4 integration diff**.
+**Important provenance:** The motor PWM, encoders, interrupt handling, distance helpers, PID utilities and motion task were already part of the original motion subsystem.
 
 ### Buddy 3 — IR line following, barcode and steering intent
 
@@ -103,7 +127,7 @@ The Pico W runs on a Robo Pico / Cytron Maker Pi Pico-style base. Pin allocation
 - Includes steering/line-recovery decisions such as forward, gentle steering and a recovery pivot, as well as a periodic line-intent refresh.
 - The task continues to service **legacy sample/statistics interfaces** (`mbx_samples`, `app_stats`) inherited from the producer-consumer teaching example. These are separate from the actual line-control integration.
 
-**Changes verified in v1→v2/v4:** `task_consumer.c` includes the Vehicle Controller header, replaces **six** `motion_cmd_post(...)` steering call sites with `vehicle_controller_line_motion_post(command, right_line || center_line)`, and adds **one additional heartbeat/refresh call** when recovering a lost line. This is **six replacements + one new call**, not seven replacements.
+**Earlier steering handoff:** `task_consumer.c` includes the Vehicle Controller header, replaces **six** `motion_cmd_post(...)` steering call sites with `vehicle_controller_line_motion_post(command, right_line || center_line)`, and adds **one additional heartbeat/refresh call** when recovering a lost line. This is **six replacements + one new call**, not seven replacements.
 
 **Behavioral consequence:** Those paths no longer call Buddy 2 directly. As the Vehicle Controller does **not forward output commands**, the redirected steering paths cannot currently drive the robot. Buddy 3 should review and approve these cross-owner edits before merging into newer work.
 
@@ -116,13 +140,13 @@ The Pico W runs on a Robo Pico / Cytron Maker Pi Pico-style base. Pin allocation
 - Samples on a **10 ms cyclic tick** (~100 Hz), performs stationary calibration, and reports heading, pitch, roll, acceleration magnitude, magnetic magnitude and read errors.
 - Includes collision/shock and hump-related processing, an **8-message IMU event buffer**, a packed single-word sensor snapshot and sensor/fault/timing statistics.
 - Provides read-only snapshot/status access so other tasks do **not** directly access I²C0.
-- Keeps an older example `monitor_task` and summary-message interfaces for compatibility with the original project template. Its verbose logging is gated in v4.
+- Keeps an older example `monitor_task` and summary-message interfaces for compatibility with the original project template. Its verbose logging is controlled by a debug flag.
 
-**Verified v1→v4 change:** `imu_task.c` gained startup return-code logging for `imu_drv_init()`, and `task_monitor.c` gained `S4_MONITOR_DEBUG_PRINT` gates. The underlying LSM303D driver and IMU algorithms are **already present in v1**, so document them as project functionality rather than claiming they were all added in v4.
+**Earlier diagnostics update:** `imu_task.c` gained startup return-code logging for `imu_drv_init()`, and `task_monitor.c` gained `S4_MONITOR_DEBUG_PRINT` gates. The underlying LSM303D driver and IMU algorithms predate those logging changes.
 
 ### Buddy 4 — Vehicle Controller
 
-**Files:** `vehicle_controller/vehicle_controller_core.c/.h`, `vehicle_controller.c/.h` (**added after v1**).
+**Files:** `vehicle_controller/vehicle_controller_core.c/.h`, `vehicle_controller.c/.h`.
 
 - Implements state-based, safety-prioritized decisions using IMU health/snapshot, shared safety flags, line visibility and recent line-following intents.
 - Models initialization, driving, line search/loss, staleness timeout, pause, hump-related handling, mission completion and error/halt priority.
@@ -131,19 +155,19 @@ The Pico W runs on a Robo Pico / Cytron Maker Pi Pico-style base. Pin allocation
 
 ### Buddy 4 — Safety Handler
 
-**Files:** `safety_handler/safety_core.c/.h`, `safety_handler.c/.h`, `safety_policy.c/.h`, `safety_estop_bridge.c/.h`, `safety_handler/tests/` (**added after v1**).
+**Files:** `safety_handler/safety_core.c/.h`, `safety_handler.c/.h`, `safety_policy.c/.h`, `safety_estop_bridge.c/.h`, `safety_handler/tests/`.
 
 - A **priority-5 observer task**, currently polling every **50 ms**, inspects collision, obstacle-stop and remote-abort requests via the shared `flg_safety` event flag.
 - Tracks a **sticky software latch**, reasons and conservative observer-failure state.
 - Models ESTOP assertions, ownership, authorization and rejection of unsafe resets; provides an assert-only bridge with regression tests.
-- **`SH_ENABLE_SHARED_ESTOP_ASSERT=0` in v4**: the observer does **not** currently set/clear the live `SAFETY_ESTOP_LATCHED` bit in production. There is no validated physical stop/reset workflow.
+- **`SH_ENABLE_SHARED_ESTOP_ASSERT=0` in the earlier build**: the observer does **not** currently set/clear the live `SAFETY_ESTOP_LATCHED` bit in production. There is no validated physical stop/reset workflow.
 - Test implementations are organized under `safety_handler/tests/`, invoked once from `safety_test_suite_run()` (the Phase 4A–4F software/read-only regression set).
 
 ### Buddy 5 — Obstacle scanning (planned)
 
-**Files in uploaded v4:** `subsystem5/subsystem5.c/.h`, `subsystem5_test.c`.
+**Earlier files:** `subsystem5/subsystem5.c/.h`, `subsystem5_test.c`.
 
-The checked v4 source contains **only an empty initialization/start skeleton and a placeholder `S5-U01` test**. There is **no live obstacle-scanning task or sensor driver in this snapshot**. `SAFETY_REQ_OBSTACLE_STOP` is defined in shared data and used by Buddy 4's policy/model tests; actual publication and acknowledgement by Buddy 5 remain to be integrated.
+The earlier implementation contained **only an empty initialization/start skeleton and a placeholder `S5-U01` test**. There is **no live obstacle-scanning task or sensor driver in this snapshot**. `SAFETY_REQ_OBSTACLE_STOP` is defined in shared data and used by Buddy 4's policy/model tests; actual publication and acknowledgement by Buddy 5 remain to be integrated.
 
 ## 4. Shared RTOS interfaces
 
@@ -161,25 +185,21 @@ The checked v4 source contains **only an empty initialization/start skeleton and
 
 For official ownership and bit definitions see `app_program/app_data.h` and [`TEAM.md`](TEAM.md). The existing `TEAM.md` still has some outdated example rows that the team should update.
 
-## 5. What changed between project snapshots?
+## 5. Earlier integration changes
 
-This is a **source comparison**, not Git authorship attribution. It describes what changed in the uploaded archives, not who personally made each change.
-
-| Area | v1 → v2 | v2 → v4 |
+| Area | Old | New |
 | --- | --- | --- |
-| Buddy 1 (`subsystem1/`) | No subsystem file changes | No subsystem file changes |
-| Buddy 2 (`subsystem2/`) | `task_motion.c`: wheel diameter **6.5 → 6.2 cm** | No subsystem file changes |
-| Buddy 3 (`subsystem3/`) | `task_consumer.c`: six motion calls redirected to VC + new lost-line refresh | No subsystem file changes |
-| Buddy 4 IMU (`subsystem4/`) | IMU startup debug print and monitor logging switch | No subsystem file changes |
-| Buddy 4 Vehicle Controller | Added `vehicle_controller/` decision core and passive adapter | Kept |
-| Buddy 4 Safety Handler | Added core, observer and initial validation | Added policy/bridge and renamed, consolidated 4A–4F tests |
-| `app_main.c` | Added fail-fast object initialization and Safety/VC init/start | Switched to one Buddy 4 test-suite call |
-| `CMakeLists.txt` | No change | Added nested `safety_handler/tests/*.c` sources |
-| Shared kernel/config | Task-priority ceiling **32 → 48**, bitmap helpers, watchdog timer tick setup, I²C debug-print changes | Same underlying changes retained |
-| Buddy 5 (`subsystem5/`) | No subsystem file changes | No subsystem file changes |
-| README files | Phase-level notes added | Consolidated README; phase-level notes removed |
+| Buddy 2 wheel calibration | 6.5 cm wheel diameter | 6.2 cm in `task_motion.c` |
+| Buddy 3 steering | Six steering calls sent commands directly to motion | Six calls publish intent to the controller, with one additional lost-line refresh |
+| Buddy 4 IMU | Sensor driver and IMU algorithms already in place | Startup return-code logging and a switch for verbose monitor output |
+| Vehicle Controller and Safety Handler | Subsystems handled their own inputs | Controller decision core and passive adapter, safety observer, policy and bridge tests |
+| Startup and tests | Separate startup and test paths | Fail-fast initialization, Safety/VC startup and one combined Buddy 4 test runner |
+| Build and kernel | Task-priority ceiling of 32 | Ceiling of 48, bitmap helpers, watchdog tick setup, I²C diagnostics and nested safety tests in CMake |
+| Team documentation | Separate phase notes | Consolidated integration notes and test history |
 
-**Additional shared-code details from v1→v4:**
+Buddy 1 and Buddy 5 had no subsystem source edits during these earlier integration changes.
+
+**Shared-code details**
 
 - `config/config.h`: `CNF_MAX_TSKPRI` raised to **48** to accommodate Wi-Fi priority 40.
 - `config/config_func.h`: enabled bitmap helper functions used by expanded priority handling.
@@ -216,7 +236,7 @@ cmake --build --preset pico-w
 - Open USB serial at **115200 baud** (for example, VS Code Serial Monitor or PuTTY on Windows).
 - Keep motor power disconnected for the current integration checks.
 
-For the original Make-based build, the upstream repository supports `make TEST=1 -j8` from `build_make/`, but its source list may **not** automatically include the new nested `safety_handler/tests/` directory; confirm or update that build path before using it.
+For the Make-based build, use `make TEST=1 -j8` from `build_make/`. The updated Make source list includes the nested safety tests.
 
 ### Wi-Fi / MQTT option
 
@@ -253,14 +273,14 @@ The suite includes software safety policy/bridge and VC scenario checks, plus **
 
 ### Other tests / limitations
 
-- Buddy 2's **ESTOP F/L/R rejection**, motor-PWM-zero checks and 100 Hz tick checks have passed in uploaded user logs; powered motor behavior was **not tested** in the Buddy 4 batch (`S2_TEST_MOTORS=0`).
+- Buddy 2's **ESTOP F/L/R rejection**, motor-PWM-zero checks and 100 Hz tick checks have passed in earlier test logs; powered motor behavior was **not tested** in the Buddy 4 batch (`S2_TEST_MOTORS=0`).
 - `S2-U04` (motion-task sleep state) has passed on some runs and failed on others; investigate the sampling/state-check timing independently.
 - `S1-U24` frequently reports `DISCONNECTED`; the offline test preset's `NET=none, MQTT=0` should be considered before attributing it to the Wi-Fi implementation.
-- `INT-01` (example S2 → S3 sample flow) and `INT-02` (example S3 → S4 summary flow) have failed in the supplied logs. **Both tests and the underlying example interfaces are present in uploaded v4**. If the team removes them in a later working tree, remove or replace the corresponding dependent example code deliberately rather than assuming all of it is unused.
+- `INT-01` (example S2 → S3 sample flow) and `INT-02` (example S3 → S4 summary flow) have failed in the supplied logs. **Both tests and the underlying example interfaces were present in the earlier build**. If the team removes them in a later working tree, remove or replace the corresponding dependent example code deliberately rather than assuming all of it is unused.
 - Buddy 5's passing `S5-U01` is only a **placeholder task-context test**; it does not validate obstacle sensing.
-- No evidence in the uploaded source/logs establishes successful end-to-end Wi-Fi/MQTT connection, physical line-course traversal, obstacle avoidance, hump traversal or physical ESTOP actuation.
+- No evidence in the source/logs establishes successful end-to-end Wi-Fi/MQTT connection, physical line-course traversal, obstacle avoidance, hump traversal or physical ESTOP actuation.
 
-## 8. Integration work still required
+## 8. Follow-ups recorded at the time
 
 1. Agree a **single motor-command owner**, then implement and verify Vehicle Controller → Buddy 2 arbitration. Check any remaining direct-motion paths with Buddy 3.
 2. Provide persistent, acknowledged collision/obstacle/abort requests so a brief event cannot disappear between Safety Handler polls (currently **50 ms**).
@@ -272,8 +292,8 @@ The suite includes software safety policy/bridge and VC scenario checks, plus **
 
 ## 9. Repository documentation and collaboration
 
-- **`README.md` (this file):** implementation, build, verified changes across versions, test results and known limitations.
-- **`TEAM_INTEGRATIOn.md`:** team-owned register of subsystems, pins, peripherals, priorities and shared interface IDs. **Keep it separately**; update outdated template rows together rather than replacing it with this README.
+- **`README_INTEGRATION.md` (this file):** implementation, build, verified changes across versions, test results and known limitations.
+- **`TEAM.md`:** team-owned register of subsystems, pins, peripherals, priorities and shared interface IDs. **Keep it separately**; update outdated template rows together rather than replacing it with this README.
 - **`testing/` and test logs:** evidence and regression history. The live Buddy 4 combined runner is `app_program/safety_handler/tests/safety_test_suite.c`.
 - **Pull requests / Git diffs:** review cross-owner edits. In particular, Buddy 3's changed steering handoff is a functional behavioral change, while Buddy 2's wheel-diameter adjustment needs owner confirmation.
 

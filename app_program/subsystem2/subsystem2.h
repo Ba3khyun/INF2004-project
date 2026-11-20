@@ -61,6 +61,8 @@ IMPORT void		motion_cyclic_handler(void *exinf);
 
 /* Queue one command.  Continuous drive commands run until replaced or halted.
    Never blocks; returns E_OK, E_PAR (unknown code) or E_TMOUT (queue full). */
+/* Task context. Permanently inhibit drive and zero both motor outputs. */
+IMPORT void motion_end_run(void);
 IMPORT ER	motion_cmd_post(UB cmd);
 /* TRUE only when the motion task is idle and no command is queued. */
 IMPORT BOOL	motion_is_idle(void);

@@ -350,3 +350,78 @@ imu_hump_event_t imu_hump_update(imu_hump_t *h, float pitch_deg, float delta_mm,
     }
     return IMU_HUMP_NONE;
 }
+
+/* End-of-demo pickup/overturn classifier. Pure model; not a motor driver. */
+void imu_pickup_detector_init(imu_pickup_detector_t *d)
+{
+    if (d) *d = (imu_pickup_detector_t){0};
+}
+
+imu_pickup_reason_t imu_pickup_detector_step(imu_pickup_detector_t *d,
+                                             float magnitude_g,
+                                             float pitch_deg,
+                                             float roll_deg)
+{
+    int tilted;
+    if (!d) return IMU_PICKUP_NONE;
+    if (d->latched) return (imu_pickup_reason_t)d->reason;
+    tilted = imu_fabsf(pitch_deg) >= IMU_PICKUP_TILT_DEG ||
+             imu_fabsf(roll_deg) >= IMU_PICKUP_TILT_DEG;
+    if (tilted) {
+        if (d->tilt_count < IMU_PICKUP_TILT_SAMPLES) d->tilt_count++;
+    } else d->tilt_count = 0u;
+    if (magnitude_g >= 0.0f && magnitude_g < IMU_PICKUP_LOW_G) {
+        if (d->low_count < IMU_PICKUP_LOW_G_SAMPLES) d->low_count++;
+    } else d->low_count = 0u;
+    if (d->tilt_count >= IMU_PICKUP_TILT_SAMPLES) {
+        d->latched = 1u;
+        d->reason = IMU_PICKUP_OVERTURN;
+    } else if (d->low_count >= IMU_PICKUP_LOW_G_SAMPLES) {
+        d->latched = 1u;
+        d->reason = IMU_PICKUP_LOW_ACCEL;
+    }
+    return (imu_pickup_reason_t)d->reason;
+}
+
+
+/* Experimental upward-motion inference for a level pickup. This will never
+ * distinguish constant-height/constant-velocity level suspension from rest.
+ * Use a true floor-contact or downward-distance sensor for reliable lift.
+ * Called only with fresh IMU samples after calibration has completed.
+ */
+imu_pickup_reason_t imu_pickup_lift_motion_step(imu_pickup_detector_t *d,
+                                               float vertical_accel_g,
+                                               float delta_distance_mm,
+                                               float pitch_deg,
+                                               float roll_deg)
+{
+    float delta_up;
+    if (!d) return IMU_PICKUP_NONE;
+    if (d->latched) return (imu_pickup_reason_t)d->reason;
+
+    /* Encoders can keep ticking during a pickup. Retain travel in the
+     * public interface for existing callers, but never use it to veto lift. */
+    (void)delta_distance_mm;
+    if (imu_fabsf(pitch_deg) > IMU_LIFT_MAX_TILT_DEG ||
+        imu_fabsf(roll_deg) > IMU_LIFT_MAX_TILT_DEG) {
+        d->lift_level_count = 0u;
+        d->lift_up_count = 0u;
+        return IMU_PICKUP_NONE;
+    }
+    if (d->lift_level_count < IMU_LIFT_ARM_SAMPLES) {
+        d->lift_level_count++;
+        d->lift_up_count = 0u;
+        return IMU_PICKUP_NONE;
+    }
+    delta_up = vertical_accel_g - d->baseline_vertical_g;
+    if (delta_up >= IMU_LIFT_UP_DELTA_G) {
+        if (d->lift_up_count < IMU_LIFT_UP_SAMPLES) d->lift_up_count++;
+    } else {
+        d->lift_up_count = 0u;
+    }
+    if (d->lift_up_count >= IMU_LIFT_UP_SAMPLES) {
+        d->latched = 1u;
+        d->reason = IMU_PICKUP_LIFT_MOTION;
+    }
+    return (imu_pickup_reason_t)d->reason;
+}

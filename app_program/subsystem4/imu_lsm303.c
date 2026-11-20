@@ -10,6 +10,16 @@ static ID g_dd = -1;
 static UW g_addr = LSM303D_ADDR_LOW;
 static UW g_err_count = 0U;
 static imu_variant_t g_variant = IMU_VAR_UNKNOWN;
+/* Record the live phase of each synchronous transaction without I/O. */
+static volatile UW g_b4_xfer_phase, g_b4_xfer_enter, g_b4_xfer_exit;
+static volatile UW g_b4_xfer_start_us, g_b4_xfer_last_er;
+#define B4_XFER_RAW_US (*(volatile UW *)0x40054028UL)
+EXPORT UW b4_imu_xfer_phase(void) { return g_b4_xfer_phase; }
+EXPORT UW b4_imu_xfer_enter(void) { return g_b4_xfer_enter; }
+EXPORT UW b4_imu_xfer_exit(void) { return g_b4_xfer_exit; }
+EXPORT UW b4_imu_xfer_age_ms(void) { return (B4_XFER_RAW_US - g_b4_xfer_start_us)/1000U; }
+EXPORT UW b4_imu_xfer_last_er(void) { return g_b4_xfer_last_er; }
+
 
 static ER xfer_read(UW addr, UB reg, UB *out, SZ n)
 {
@@ -21,7 +31,13 @@ static ER xfer_read(UW addr, UB reg, UB *out, SZ n)
     ex.snd_data = &reg;
     ex.rcv_size = n;
     ex.rcv_data = out;
+    g_b4_xfer_start_us = B4_XFER_RAW_US;
+    g_b4_xfer_phase = 1U;
+    g_b4_xfer_enter++;
     er = tk_swri_dev(g_dd, TDN_I2C_EXEC, &ex, (SZ)sizeof(ex), &actual);
+    g_b4_xfer_last_er = (UW)er;
+    g_b4_xfer_exit++;
+    g_b4_xfer_phase = 0U;
     if (er < E_OK) { g_err_count++; }
     return er;
 }

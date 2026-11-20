@@ -5,12 +5,12 @@
  * Every 10 ms (cyclic handler -> event flag) it reads the GY-511, then runs
  * the statechart of Section 6.4:
  *   INIT_CALIBRATING -> MONITORING <-> HUMP_TRACKING
- *   critical shock or I2C failure -> FAULT -> (reinit request) -> INIT_CALIBRATING
+ *   pickup/overturn -> terminal FAULT; I2C failure -> FAULT -> reinit
  *
  * Outputs (all compact, see app_data.h):
  *   s4_imu_snapshot  latest heading/pitch/roll/state, one 32-bit word
  *   imu_evt_q        discrete events (hump start/done, minor shock, fault)
- *   flg_safety       SAF_COLLISION on a critical shock
+ *   flg_safety       SAFETY_REQ_PICKUP_END on pickup/overturn
  *   flg_faults       FLT_IMU_* bits
  * The IMU never writes a motor command: the Vehicle Controller reacts to
  * HUMP_START (single-writer rule for motion_cmd_q).
@@ -18,6 +18,7 @@
 #include "subsystem4.h"
 #include "imu_lsm303.h"
 #include "imu_math.h"
+#include "../subsystem2/subsystem2.h"
 
 /* RP2040 TIMER.TIMERAWL, free-running 1 MHz: used to time the task (NFR4.2). */
 #define S4_TIMER_RAWL     (*(volatile UW *)0x40054028UL)
@@ -40,6 +41,7 @@ typedef struct {
     UW             dist_prev;
     imu_cal_acc_t  cal;
     imu_hump_t     hump;
+    imu_pickup_detector_t pickup;
     imu_axis_map_t map;
 #if S4_USE_BRAKE_COMP
     float          speed_prev_mm_s;
@@ -58,6 +60,16 @@ static volatile UW g_mag_ovf;
 static volatile UW g_accel_mg;
 static volatile UW g_mag_mgauss;
 static volatile UW g_missed_ticks;
+/* Monotonic successful sensor observations; not reset by timing self-tests. */
+static volatile UW g_good_sample_count;
+static volatile UW g_last_good_sample_us;
+/* Sticky evidence of new demo end event; never auto-cleared by reinit. */
+static volatile UW g_pickup_event_count;
+static volatile UW g_pickup_reason;
+/* Maximum upward acceleration above the calibrated resting Z gravity,
+ * available as read-only evidence for tuning the level-lift heuristic. */
+static volatile UW g_lift_peak_up_mg;
+static volatile UW g_lift_max_run;
 /* Monotonic ISR diagnostics: never reset by S4-U16 statistics test. */
 static volatile UW g_handler_ticks;
 static volatile UW g_tick_flag_errors;
@@ -113,6 +125,17 @@ __attribute__((weak)) UW motion_get_distance_mm(void)
 EXPORT UW s4_imu_get_snapshot(void)      { return s4_imu_snapshot; }
 EXPORT UW s4_imu_hump_start_count(void) { return g_hump_start_count; }
 EXPORT UW s4_imu_hump_done_word(void) { return g_hump_done_word; }
+EXPORT UW s4_imu_good_sample_count(void) { return g_good_sample_count; }
+EXPORT UW s4_imu_good_sample_age_ms(void)
+{
+    if (!g_good_sample_count) return UINT32_MAX;
+    return (UW)((S4_TIMER_RAWL - g_last_good_sample_us) / 1000U);
+}
+EXPORT UW s4_imu_pickup_event_count(void) { return g_pickup_event_count; }
+EXPORT UW s4_imu_pickup_reason(void) { return g_pickup_reason; }
+EXPORT UW s4_imu_lift_peak_up_mg(void) { return g_lift_peak_up_mg; }
+EXPORT UW s4_imu_lift_up_run(void) { return (UW)g.pickup.lift_up_count; }
+EXPORT UW s4_imu_lift_max_run(void) { return g_lift_max_run; }
 
 EXPORT s4_imu_state_t s4_imu_state(void) { return g.state; }
 EXPORT UW s4_stat_cycles(void)           { return g_cycles; }
@@ -223,12 +246,18 @@ static void start_calibration(void)
     g.fail_cnt = 0U;
     imu_cal_reset(&g.cal);
     imu_hump_reset(&g.hump);
+    imu_pickup_detector_init(&g.pickup);
+    g_lift_peak_up_mg = 0U;
+    g_lift_max_run = 0U;
     g.shock_hold = 0U;
 }
 
 static void try_reinit(void)
 {
     ER er;
+    /* A confirmed demo-end event needs an explicit team-approved reset.
+     * A generic I2C reinit request must never clear it. */
+    if (g_pickup_event_count != 0U) return;
 
     er = imu_drv_init(s4_i2c_dev);
 
@@ -261,6 +290,9 @@ static void handle_calibration(const float f[3])
         return;
     }
     if (r == IMU_CAL_OK) {
+        /* Reuse the stationary 2-second calibration to establish the actual
+         * resting vehicle-up acceleration (typically near +1g). */
+        g.pickup.baseline_vertical_g = g.cal.sum[2] / (float)g.cal.n;
         g.state = S4_ST_MONITORING;
         imu_hump_reset(&g.hump);
         post_evt(S4_EVT_IMU_READY, 0U, 1U);
@@ -294,17 +326,8 @@ static void handle_monitoring(const float f[3], float mag_g, float delta_mm)
     imu_hump_event_t he;
     float peak = 0.0f;
 
-    if (shock == IMU_SHOCK_CRITICAL) {
-        /* Report collision through the team fault mask. */
-        (void)tk_set_flg(flg_fault, FLT_COLLISION);
-
-        /* Request emergency stop from the Safety Handler. */
-        (void)tk_set_flg(flg_safety, SAFETY_REQ_COLLISION);
-        g.state = S4_ST_FAULT;
-        imu_hump_reset(&g.hump);
-        tm_printf((UB*)"IMU: CRITICAL shock %d mg -> collision flag, FAULT\n", (INT)(mag_g * 1000.0f));
-        return;
-    }
+    /* New demo no longer treats sudden impacts as an end-of-demo event.
+     * Minor shocks remain observational; see the pickup detector below. */
     if ((shock == IMU_SHOCK_MINOR) && (g.shock_hold == 0U)) {
         post_evt(S4_EVT_SHOCK_MINOR, 0U, 0U);
         g.shock_hold = S4_SHOCK_HOLDOFF;
@@ -321,9 +344,15 @@ static void handle_monitoring(const float f[3], float mag_g, float delta_mm)
         uint32_t mm = (uint32_t)(peak + 0.5f);
         g.state = S4_ST_MONITORING;
         post_evt(S4_EVT_HUMP_DONE, mm, (he == IMU_HUMP_DONE_VALID) ? 1U : 0U);
-        tm_printf((UB*)"IMU: hump done, peak %u mm (%s)\n", (UINT)mm,
-                  (he == IMU_HUMP_DONE_VALID) ? "valid" : "INVALID");
-    }
+        tm_printf((UB*)"IMU: hump done, peak %u mm (%s) "
+            "pitch_x10=%d end_height_x10_mm=%d flat_samples=%u samples=%u\n",
+            (UINT)mm,
+            (he == IMU_HUMP_DONE_VALID) ? "valid" : "INVALID",
+            (INT)(g.pitch_deg * 10.0f),
+            (INT)(g.hump.height_mm * 10.0f),
+            (UINT)g.hump.flat_cnt,
+            (UINT)g.hump.samples);
+        }
 }
 
 /* One 10 ms cycle. */
@@ -366,6 +395,8 @@ static void run_cycle(void)
         return;
     }
     g.fail_cnt = 0U;
+    g_last_good_sample_us = S4_TIMER_RAWL;
+    g_good_sample_count++;
 
     for (i = 0U; i < 3U; i++) {
         sa[i] = imu_accel_counts_to_g(raw_a[i]);
@@ -407,7 +438,39 @@ static void run_cycle(void)
     if (g.state == S4_ST_INIT_CALIBRATING) {
         handle_calibration(f);
     } else {
-        handle_monitoring(f, mag_g, delta_mm);
+        imu_pickup_reason_t reason = imu_pickup_detector_step(
+            &g.pickup, mag_g, g.pitch_deg, g.roll_deg);
+        /* Track eligible vertical acceleration during both driving and rest. */
+        if (reason == IMU_PICKUP_NONE) {
+            float delta_up = f[2] - g.pickup.baseline_vertical_g;
+            if (g.pickup.lift_level_count >= IMU_LIFT_ARM_SAMPLES &&
+                imu_fabsf(g.pitch_deg) <= IMU_LIFT_MAX_TILT_DEG &&
+                imu_fabsf(g.roll_deg) <= IMU_LIFT_MAX_TILT_DEG &&
+                delta_up > 0.0f && delta_up < 2.0f) {
+                UW mg = (UW)(delta_up * 1000.0f);
+                if (mg > g_lift_peak_up_mg) g_lift_peak_up_mg = mg;
+            }
+            reason = imu_pickup_lift_motion_step(
+                &g.pickup, f[2], delta_mm, g.pitch_deg, g.roll_deg);
+            if ((UW)g.pickup.lift_up_count > g_lift_max_run)
+                g_lift_max_run = (UW)g.pickup.lift_up_count;
+        }
+        if (reason != IMU_PICKUP_NONE && g_pickup_event_count == 0U) {
+            motion_end_run();
+            g_pickup_reason = (UW)reason;
+            g_pickup_event_count++;
+            (void)tk_set_flg(flg_safety, SAFETY_REQ_PICKUP_END);
+            (void)tk_set_flg(flg_fault, FLT_PICKUP_OVERTURN);
+            enter_fault(0U);
+            tm_printf((UB*)"[B4-LIFT] END-OF-DEMO detected reason=%u; "
+                        "drive inhibited until reboot\n", (UINT)reason);
+            if (reason == IMU_PICKUP_LIFT_MOTION) {
+                tm_printf((UB*)"[B4-LIFT] level-lift MOTION inferred (accelerometer); "
+                            "not verified height/contact; experimental threshold\n");
+            }
+        } else if (reason == IMU_PICKUP_NONE) {
+            handle_monitoring(f, mag_g, delta_mm);
+        }
     }
     publish_snapshot();
 }

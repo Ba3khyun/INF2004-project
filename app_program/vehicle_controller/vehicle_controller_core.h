@@ -51,6 +51,10 @@ typedef struct {
     vc_state_t state;
     vc_line_intent_t intent;
     uint32_t last_line_ms;
+    uint32_t travel_mm;
+    uint32_t visible_travel_mm;
+    uint32_t visible_ms;
+    uint8_t gap_armed;
     uint8_t line_received;
     uint8_t line_visible;
     uint8_t imu_ready;
@@ -63,6 +67,12 @@ typedef struct {
     uint8_t last_hump_valid;
     uint8_t last_hump_mm;
 } vc_core_t;
+
+/* Straight, marked approach followed by a short unmarked ramp. */
+#define VC_APPROACH_GAP_MS 600u
+#define VC_APPROACH_GAP_MM 25u
+#define VC_HUMP_GAP_MS 10000u
+#define VC_HUMP_GAP_MM 250u
 
 #define VC_LINE_TIMEOUT_MS 500u
 

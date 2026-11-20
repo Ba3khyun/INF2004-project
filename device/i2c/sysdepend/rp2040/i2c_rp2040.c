@@ -1,4 +1,4 @@
-/*
+﻿/*
  *----------------------------------------------------------------------
  *    Device Driver for μT-Kernel 3.0
  *
@@ -25,84 +25,6 @@
 
 #define I2C_CORE_DEBUG_PRINT 0 // Added: Set to 1 to enable debug printing of I2C core information, 0 to disable.
 
-/*
- * B4 I2C0 bounded completion wait, diagnostic / motor-disabled build.
- * Earlier SMP traces showed the I2C completion flag wait remaining blocked
- * for >27 seconds despite a short kernel timeout. Polling with TMO_POL
- * prevents this transaction from relying on the RTOS timer event queue.
- * This isolates the failure mechanism; it does NOT prove the kernel cause.
- * Switch off after investigating and validating the underlying timeout path.
- */
-#ifndef I2C0_HW_BOUNDED_WAIT
-#define I2C0_HW_BOUNDED_WAIT 1
-#endif
-#ifndef I2C0_HW_PHASE_TIMEOUT_US
-#define I2C0_HW_PHASE_TIMEOUT_US 8000U
-#endif
-
-
-/* One-shot verification exercises this SAME helper on a disposable flag.
- * Normal driver calls use inject_after_us=0 (never synthesize completion). */
-static ER i2c0_wait_bounded(ID flagid, UW inject_after_us, UW *elapsed_us)
-{
-    UINT pattern = 0;
-    UW begin = (*(volatile UW *)0x40054028UL);
-    ER er;
-    BOOL injected = FALSE;
-    do {
-        UW elapsed = (UW)((*(volatile UW *)0x40054028UL) - begin);
-        if (inject_after_us != 0U && !injected && elapsed >= inject_after_us) {
-            (void)tk_set_flg(flagid, 1);
-            injected = TRUE;
-        }
-        er = tk_wai_flg(flagid, 1, TWF_ORW | TWF_BITCLR, &pattern, TMO_POL);
-        if (er != E_TMOUT) break;
-    } while ((UW)((*(volatile UW *)0x40054028UL) - begin) < I2C0_HW_PHASE_TIMEOUT_US);
-    if (elapsed_us != NULL) *elapsed_us = (UW)((*(volatile UW *)0x40054028UL) - begin);
-    return er;
-}
-
-/* Test-only: no real controller registers or IMU completion flags touched. */
-#if defined(APP_TEST) && (APP_TEST == 1) && I2C0_HW_BOUNDED_WAIT
-EXPORT INT b4_i2c0_bounded_wait_test(void)
-{
-    T_CFLG cfg = {0};
-    ID id;
-    UW elapsed = 0;
-    ER er;
-    INT failed = 0;
-    cfg.flgatr = TA_TFIFO;
-    id = tk_cre_flg(&cfg);
-    if (id < E_OK) {
-        tm_printf((UB*)"[B4-I2C] FAIL: cannot create isolated test flag er=%d\n", (INT)id);
-        return 1;
-    }
-    (void)tk_set_flg(id, 1);
-    er = i2c0_wait_bounded(id, 0U, &elapsed);
-    tm_printf((UB*)"[B4-I2C] pre-signalled: er=%d elapsed_us=%u %s\n",
-              (INT)er, (UINT)elapsed, (er == E_OK) ? "PASS" : "FAIL");
-    if (er != E_OK) failed++;
-
-    (void)tk_clr_flg(id, 0);
-    er = i2c0_wait_bounded(id, 0U, &elapsed);
-    tm_printf((UB*)"[B4-I2C] missing completion: er=%d elapsed_us=%u %s\n",
-              (INT)er, (UINT)elapsed,
-              (er == E_TMOUT && elapsed >= I2C0_HW_PHASE_TIMEOUT_US && elapsed < 20000U) ? "PASS" : "FAIL");
-    if (er != E_TMOUT || elapsed < I2C0_HW_PHASE_TIMEOUT_US || elapsed >= 20000U) failed++;
-
-    (void)tk_clr_flg(id, 0);
-    er = i2c0_wait_bounded(id, 1000U, &elapsed);
-    tm_printf((UB*)"[B4-I2C] delayed synthetic completion: er=%d elapsed_us=%u %s\n",
-              (INT)er, (UINT)elapsed,
-              (er == E_OK && elapsed >= 1000U && elapsed < I2C0_HW_PHASE_TIMEOUT_US) ? "PASS" : "FAIL");
-    if (er != E_OK || elapsed < 1000U || elapsed >= I2C0_HW_PHASE_TIMEOUT_US) failed++;
-    (void)tk_del_flg(id);
-    tm_printf((UB*)"[B4-I2C] isolated wait-path checks %s (failed=%d)\n",
-              failed ? "FAIL" : "PASS", failed);
-    return failed;
-}
-#endif
-
 /* RP2040 free-running microsecond timer */
 #define I2C_TIMER_RAWL (*(volatile UW *)0x40054028UL)
 
@@ -115,6 +37,28 @@ static volatile UW g_i2c_irq_core[DEV_I2C_UNITNM];
 static volatile UW g_i2c_irq_signal_us[DEV_I2C_UNITNM];
 /* ADDED: Timestamp after tk_set_flg() */
 static volatile UW g_i2c_irq_after_set_us[DEV_I2C_UNITNM];
+
+/* One-flash, read-only trace of the existing interrupt/flag path.
+ * Do NOT print from the IRQ and do NOT change tk_wai_flg timeout semantics.
+ * All fields are 32-bit single-writer diagnostics, observed best-effort.
+ */
+static volatile UW b4_irq_count[DEV_I2C_UNITNM];
+static volatile UW b4_wake_irq_count[DEV_I2C_UNITNM];
+static volatile UW b4_last_irq_us[DEV_I2C_UNITNM];
+static volatile UW b4_last_irq_stat[DEV_I2C_UNITNM];
+static volatile UW b4_last_irq_state[DEV_I2C_UNITNM];
+static volatile UW b4_set_ok[DEV_I2C_UNITNM];
+static volatile UW b4_set_fail[DEV_I2C_UNITNM];
+static volatile ER b4_last_set_er[DEV_I2C_UNITNM];
+static volatile UW b4_wait_in[DEV_I2C_UNITNM];
+static volatile UW b4_wait_out[DEV_I2C_UNITNM];
+static volatile UW b4_wait_start_us[DEV_I2C_UNITNM];
+static volatile UW b4_irq_at_wait[DEV_I2C_UNITNM];
+static volatile UW b4_set_at_wait[DEV_I2C_UNITNM];
+static volatile UW b4_wait_timeout_count[DEV_I2C_UNITNM];
+static volatile ER b4_last_wait_er[DEV_I2C_UNITNM];
+static volatile UW b4_last_wait_elapsed_us[DEV_I2C_UNITNM];
+
 
 #if DEV_IIC_ENABLE
 /*
@@ -165,9 +109,6 @@ typedef struct {
 	UW abort_source;  /* Diagnostic: I2C transmit-abort reason: ADDED */ 
 } T_I2C_LLDCB;
 LOCAL T_I2C_LLDCB	ll_devcb[DEV_I2C_UNITNM];
-/* Count hardware-deadline expiries, available for future read-only diagnostics. */
-static volatile UW g_i2c_hw_deadline_expiries[DEV_I2C_UNITNM];
-
 
 #if TK_SUPPORT_SMP
 LOCAL T_SPLOCK ll_lock[DEV_I2C_UNITNM];
@@ -205,6 +146,11 @@ LOCAL void i2c_inthdr( UINT intno )
 	I2C_LOCK(unit, intsts);
 
 	i2c_sts = in_w(I2C_INTR_STAT(unit));
+    b4_irq_count[unit]++;
+    b4_last_irq_us[unit] = I2C_TIMER_RAWL;
+    b4_last_irq_stat[unit] = i2c_sts;
+    b4_last_irq_state[unit] = p_cb->state;
+
 	if(i2c_sts & I2C_INT_ERROR) abort = TRUE;
 
 	if(!abort) {
@@ -274,6 +220,7 @@ LOCAL void i2c_inthdr( UINT intno )
 	
 	// CHANGED THIS WHOLE SECTION: The original code was waking up the waiting task before releasing the spinlock, which could lead to priority inversion or deadlocks. The revised code releases the spinlock first, then wakes up the waiting task. This ensures that the waiting task can run without being blocked by the spinlock.
 	if (wup) {
+        b4_wake_irq_count[unit]++;
 		/* Stop further interrupts from this I2C unit */
 		out_w(I2C_INTR_MASK(unit), 0);
 
@@ -291,7 +238,12 @@ LOCAL void i2c_inthdr( UINT intno )
 
 	if (wup) {
 		/* Kernel can now request the appropriate dispatch */
-		(void)tk_set_flg(p_cb->done_flgid, 1);
+        {
+            ER set_er = tk_set_flg(p_cb->done_flgid, 1);
+            b4_last_set_er[unit] = set_er;
+            if (set_er == E_OK) b4_set_ok[unit]++;
+            else b4_set_fail[unit]++;
+        }
 
 		g_i2c_irq_after_set_us[unit] = I2C_TIMER_RAWL;
 	}
@@ -404,29 +356,19 @@ LOCAL ER i2c_trans(INT unit, T_I2C_LLDCB *p_cb)
 
 		// ADDED: Measure the time spent waiting for the transaction to complete, and print a diagnostic message if it takes longer than 1000 microseconds.
 		task_core_before = S4_DEBUG_CPUID;
-		#if I2C0_HW_BOUNDED_WAIT
-		if (unit == DEV_I2C_0) {
-			/* Only polling for the already-created completion flag.
-			 * TMO_POL cannot block on a lost kernel timer event.
-			 * Unsigned subtraction tolerates the 32-bit us-timer wrap. */
-			UW wait_elapsed = 0U;
-			err = i2c0_wait_bounded(p_cb->done_flgid, 0U, &wait_elapsed);
-			if (err == E_TMOUT) {
-				g_i2c_hw_deadline_expiries[unit]++;
-				/* Only emit a diagnostic on an actual bounded timeout. */
-				tm_printf((UB*)"[I2C0] bounded phase timeout: state=%lu addr=0x%02lX elapsed_us=%lu\n",
-					(unsigned long)p_cb->state,
-					(unsigned long)p_cb->sadr,
-					(unsigned long)wait_elapsed);
-			}
-		} else
-		#endif
-		{
-			err = tk_wai_flg(p_cb->done_flgid, 1,
-					TWF_ORW | TWF_BITCLR, &flgptn,
-					ll_devdat[unit].timout);
-		}
+        b4_irq_at_wait[unit] = b4_irq_count[unit];
+        b4_set_at_wait[unit] = b4_set_ok[unit];
+        b4_wait_start_us[unit] = I2C_TIMER_RAWL;
+        b4_wait_in[unit]++;
+		err = tk_wai_flg(p_cb->done_flgid, 1,
+						TWF_ORW | TWF_BITCLR,
+						&flgptn,
+						ll_devdat[unit].timout);
 
+        b4_last_wait_elapsed_us[unit] = I2C_TIMER_RAWL - b4_wait_start_us[unit];
+        b4_last_wait_er[unit] = err;
+        if (err == E_TMOUT) b4_wait_timeout_count[unit]++;
+        b4_wait_out[unit]++;
 		task_core_after = S4_DEBUG_CPUID;
 
 		/* Capture timing after the SINGLE wait */
@@ -559,6 +501,64 @@ EXPORT W dev_i2c_llctl( UW unit, INT cmd, UW p1, UW p2, UW *pp)
 	return (W)err;
 }
 
+/* Diagnostic-only, called from test task context. No bus transactions, no
+ * acknowledgement/clear of interrupt bits, no completion flag writes. */
+EXPORT void b4_i2c0_multi_trace_print(const char *checkpoint)
+{
+    const INT u = DEV_I2C_0;
+    UW now = I2C_TIMER_RAWL;
+    UW starts = b4_wait_in[u];
+    UW ends = b4_wait_out[u];
+    UW pending = starts != ends;
+    UW age_us = (pending && starts > 0U) ? now - b4_wait_start_us[u] : 0U;
+    T_RFLG f = {0};
+    ER f_er = tk_ref_flg(ll_devcb[u].done_flgid, &f);
+    UW pins = *(volatile UW *)0xD0000004UL; /* SIO GPIO_IN, GP0..GP29 */
+    UW sda = DEVCNF_I2C0_SDA_PIN;
+    UW scl = DEVCNF_I2C0_SCL_PIN;
+
+    tm_printf((UB*)"[B4-I2C-COUNTS] %s irq=%lu wake_irq=%lu set_ok=%lu set_fail=%lu "
+                    "set_er=%d wait_in=%lu wait_out=%lu pending=%lu timeouts=%lu "
+                    "last_wait_er=%d last_wait_us=%lu\n",
+              checkpoint,
+              (unsigned long)b4_irq_count[u], (unsigned long)b4_wake_irq_count[u],
+              (unsigned long)b4_set_ok[u], (unsigned long)b4_set_fail[u],
+              (INT)b4_last_set_er[u], (unsigned long)starts,
+              (unsigned long)ends, (unsigned long)pending,
+              (unsigned long)b4_wait_timeout_count[u], (INT)b4_last_wait_er[u],
+              (unsigned long)b4_last_wait_elapsed_us[u]);
+    tm_printf((UB*)"[B4-I2C-WAIT] %s age_us=%lu configured_timeout_ticks=%d "
+                    "irq_since_wait=%lu set_since_wait=%lu "
+                    "flag_id=%d flag_er=%d flag_bits=0x%x waiter=%d "
+                    "driver_state=%lu last_irq_state=%lu last_irq_st=0x%lx last_irq_age_us=%lu\n",
+              checkpoint, (unsigned long)age_us, (INT)ll_devdat[u].timout,
+              (unsigned long)(b4_irq_count[u] - b4_irq_at_wait[u]),
+              (unsigned long)(b4_set_ok[u] - b4_set_at_wait[u]),
+              (INT)ll_devcb[u].done_flgid, (INT)f_er,
+              (UINT)((f_er == E_OK) ? f.flgptn : 0U),
+              (INT)((f_er == E_OK) ? f.wtsk : 0),
+              (unsigned long)ll_devcb[u].state,
+              (unsigned long)b4_last_irq_state[u],
+              (unsigned long)b4_last_irq_stat[u],
+              (unsigned long)(b4_irq_count[u] ? now - b4_last_irq_us[u] : 0U));
+    tm_printf((UB*)"[B4-I2C-HW] %s ena=0x%lx ena_status=0x%lx status=0x%lx "
+                    "mask=0x%lx raw_intr=0x%lx txflr=%lu rxflr=%lu tar=0x%lx "
+                    "sda_GP%lu=%lu scl_GP%lu=%lu sda_func=%lu scl_func=%lu\n",
+              checkpoint,
+              (unsigned long)in_w(I2C_ENABLE(u)),
+              (unsigned long)in_w(I2C_ENABLE_STATUS(u)),
+              (unsigned long)in_w(I2C_STATUS(u)),
+              (unsigned long)in_w(I2C_INTR_MASK(u)),
+              (unsigned long)in_w(I2C_RAW_INTR_STAT(u)),
+              (unsigned long)in_w(I2C_TXFLR(u)),
+              (unsigned long)in_w(I2C_RXFLR(u)),
+              (unsigned long)in_w(I2C_TAR(u)),
+              (unsigned long)sda, (unsigned long)((pins >> sda) & 1U),
+              (unsigned long)scl, (unsigned long)((pins >> scl) & 1U),
+              (unsigned long)(in_w(GPIO_CTRL(sda)) & 31U),
+              (unsigned long)(in_w(GPIO_CTRL(scl)) & 31U));
+}
+
 /*----------------------------------------------------------------------
  * Get I2C transmit-abort reason
  * Returns the value of the TX_ABRT_SOURCE register for the specified unit.
@@ -574,11 +574,6 @@ EXPORT UW dev_i2c_get_abort_source(UW unit)
 }
 
 // ADDED
-EXPORT UW dev_i2c_get_hw_deadline_expiries(UW unit)
-{
-    return (unit < DEV_I2C_UNITNM) ? g_i2c_hw_deadline_expiries[unit] : 0xFFFFFFFFU;
-}
-
 EXPORT UW dev_i2c_get_error_reason(UW unit)
 {
     if (unit >= DEV_I2C_UNITNM) {
