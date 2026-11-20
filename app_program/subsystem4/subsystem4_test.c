@@ -4,184 +4,166 @@
  *	Record unit results in testing/subsystem4/TEST_LOG.md and the
  *	INT- result in testing/integration/TEST_LOG.md.
  *
- *	S4-U01, INT-02  template Monitor (IF-03)
- *	S4-U03..U09     interim Vehicle Controller + Safety Handler
- *	                (task_vehicle.c).  Normal builds start these tasks in
- *	                subsystem4_start(); test builds do not, because the
- *	                S1/S2 tests play those roles.  So this test starts them
- *	                itself, AFTER the S1 and S2 tests are done, then plays
- *	                Wi-Fi (remote_cmd_q, SAFETY_REQ_REMOTE_ABORT) and
- *	                Obstacle (mbf_obstacle, flg_obstacle) and checks the
- *	                controller's state and line gate.  The tasks keep
- *	                running afterwards, and the last check leaves the car
- *	                stopped (remote ABORT is sticky until reset).
+ *	BEFORE RUNNING: the board must lie still on the bench (not moving, not
+ *	being tapped) for the first ~6 s after power-up.  S4-U12..S4-U16 depend
+ *	on it.  Do not call imu_drv_* from here: the IMU task owns I2C0.
  */
 
 #include "subsystem4.h"
-#include "../subsystem5/subsystem5.h"	/* IF-06/07: mbf_obstacle, flg_obstacle */
-#include "../subsystem2/subsystem2.h"	/* MC_CMD_DRIVE_FORWARD */
+#include "imu_lsm303.h"
+#include "imu_math.h"
 #include "../test_report.h"
 
 #if APP_TEST
 
-#define S4T_SETTLE_MS	100	/* > 2 vehicle_task periods (10..20 ms each) */
+#define WAIT_STEP_MS        50
+#define CAL_WAIT_MS         4500    /* 2 s calibration + start-up + margin  */
+#define MEASURE_MS          3000
 
-LOCAL ER s4t_remote(UINT type, UINT seq)
+static ER wait_for_monitoring(INT limit_ms)
 {
-	UB	m[RCMD_MSG_LEN];
-
-	if (app_rcmd_pack(m, type, seq) != APP_OK) {
-		return E_PAR;
+	INT waited = 0;
+	while (s4_imu_state() != S4_ST_MONITORING) {
+		if (waited >= limit_ms) {
+			return E_TMOUT;
+		}
+		tk_dly_tsk(WAIT_STEP_MS);
+		waited += WAIT_STEP_MS;
 	}
-	return tk_snd_mbf(remote_cmd_q, m, RCMD_MSG_LEN, TMO_POL);
+	return E_OK;
 }
 
-LOCAL ER s4t_obstacle(UW state, BOOL det, UW action)
+static UW drain_events(void)
 {
-	UW	evt = s5_evt_pack(state, det, action, 20U, 15U, 90U, FALSE);
-
-	return tk_snd_mbf(mbf_obstacle, &evt, (INT)sizeof(evt), TMO_POL);
-}
-
-LOCAL UINT s4t_safety_ptn(void)
-{
-	T_RFLG	r;
-
-	return (tk_ref_flg(flg_safety, &r) == E_OK) ? r.flgptn : 0xFFFFFFFFU;
-}
-
-/* Line gate is closed: a line-following post is refused with E_OBJ */
-LOCAL BOOL s4t_gate_closed(void)
-{
-	return !vc_line_gate_is_open() &&
-	       vc_line_cmd_post(MC_CMD_DRIVE_FORWARD) == E_OBJ;
-}
-
-LOCAL void s4t_report(const char *what)
-{
-	tm_printf((UB*)"        %s: vc state=%u gate=%s flg_safety=0x%x\n",
-		  what, vc_vehicle_state(),
-		  vc_line_gate_is_open() ? "open" : "closed", s4t_safety_ptn());
+	UW n = 0U;
+	uint16_t w;
+	while (tk_rcv_mbf(mbf_imu_evt, &w, TMO_POL) >= E_OK) {
+		n++;
+	}
+	return n;
 }
 
 EXPORT void subsystem4_test(void)
 {
 	T_RMBF	rmbf;
+	T_RFLG	rflg;
+	T_CFLG	cflg = {0};
+	ID	flg_test;
 	UW	before;
-	ID	tid_s, tid_v;
-	UB	drain[RCMD_MSG_LEN];
-	UW	evt;
+	UW	accepted;
+	UW	mag_ovf_before;
+	UW	snap;
+	uint16_t msg;
+	INT	i;
 
 	TEST_INIT();
 
-	/* S4-U01: the message buffer accepts the documented line length */
+	/* ---- original checks, kept for the example Subsystem 3 link ---- */
 	TEST_CHECK("S4-U01",
 		   tk_ref_mbf(mbf_summary, &rmbf) == E_OK &&
 		   rmbf.maxmsz == S4_SUMMARY_MAX,
 		   "message buffer max line = S4_SUMMARY_MAX");
 
-	/* INT-02 (integration, IF-03): summary lines from subsystem 3 reach
-	   the monitor.  One line per 5 samples = one per 1.5 s. */
+	/* ---- sensor and start-up ---- */
+	TEST_CHECK("S4-U10", imu_drv_variant() == IMU_VAR_LSM303D,
+		   "chip identified as LSM303D (WHO_AM_I 0x49)");
+
+	TEST_CHECK("S4-U12", wait_for_monitoring(CAL_WAIT_MS) == E_OK,
+		   "calibration finishes and task reaches MONITORING within 4.5 s");
+
+	TEST_CHECK("S4-U13", s4_stat_accel_mg() >= 900U && s4_stat_accel_mg() <= 1100U,
+		   "stationary |a| between 0.9 g and 1.1 g (accel range/scale correct)");
+
+	TEST_CHECK("S4-U14", s4_stat_mag_mgauss() >= 150U && s4_stat_mag_mgauss() <= 1200U,
+		   "magnetic field magnitude plausible (0.15 - 1.2 gauss)");
+
+	snap = s4_imu_get_snapshot();
+	TEST_CHECK("S4-U15", s4_snap_valid(snap) == 1U && s4_snap_state(snap) == S4_ST_MONITORING,
+		   "snapshot word is valid and reports MONITORING");
+
+	ER fault_er = tk_ref_flg(flg_fault, &rflg);
+	TEST_CHECK("S4-U15b",
+		fault_er == E_OK &&
+		(rflg.flgptn & (FLT_IMU_I2C | FLT_COLLISION)) == 0U,
+		"no IMU fault bits set after start-up");
+
+	/* ---- timing (NFR4.1 / NFR4.2) ---- */
+	mag_ovf_before = s4_stat_mag_overflow();
+	s4_stat_reset();
+	tk_dly_tsk(MEASURE_MS);
+	TEST_CHECK("S4-U16a", s4_stat_cycles() >= 280U && s4_stat_cycles() <= 320U,
+		   "about 300 cycles in 3 s (10 ms period)");
+	TEST_CHECK("S4-U16b", s4_stat_cycle_us_max() < 5000U,
+		   "worst cycle execution time < 5 ms (NFR4.2)");
+	TEST_CHECK("S4-U16c", s4_stat_period_us_max() < 20000U,
+		   "worst gap between cycles < 20 ms (no missed tick)");
+	TEST_CHECK("S4-U16d", s4_stat_mag_overflow() == mag_ovf_before,
+		   "no magnetometer overflow while stationary");
+	tm_printf((UB*)"[INFO] S4 timing: cycles=%u cycle_max=%uus period_max=%uus i2c_errors=%u\n",
+		  (UINT)s4_stat_cycles(), (UINT)s4_stat_cycle_us_max(),
+		  (UINT)s4_stat_period_us_max(), (UINT)imu_drv_error_count());
+
+	/* ---- imu_evt_q depth: proves S4_EVT_BUFSZ really holds 8 messages ---- */
+	(void)drain_events();
+	accepted = 0U;
+	for (i = 0; i < 16; i++) {
+		msg = s4_evt_pack(S4_EVT_SHOCK_MINOR, 0U, 0U, (uint32_t)i);
+		if (tk_snd_mbf(mbf_imu_evt, &msg, (INT)sizeof(msg), TMO_POL) >= E_OK) {
+			accepted++;
+		}
+	}
+	TEST_CHECK("S4-U17", accepted == (UW)S4_EVT_QUEUE_DEPTH,
+		   "imu_evt_q holds exactly 8 messages (kernel overhead as assumed)");
+	tm_printf((UB*)"[INFO] S4-U17 accepted %u of 16 messages\n", (UINT)accepted);
+	(void)drain_events();
+
+	/* ---- packed formats behave the same on the Pico as on the PC ---- */
+	msg = s4_evt_pack(S4_EVT_HUMP_DONE, 42U, 1U, 17U);
+	TEST_CHECK("S4-U18a",
+		   s4_evt_type(msg) == S4_EVT_HUMP_DONE && s4_evt_height_mm(msg) == 42U &&
+		   s4_evt_valid(msg) == 1U && s4_evt_seq(msg) == 17U,
+		   "imu_evt word packs and unpacks correctly on target");
+	snap = s4_snap_pack(0xA5U, 0x80U, 0x7FU, S4_ST_HUMP_TRACKING, 1U, 9U);
+	TEST_CHECK("S4-U18b",
+		   s4_snap_heading(snap) == 0xA5U && s4_snap_pitch(snap) == 0x80U &&
+		   s4_snap_roll(snap) == 0x7FU && s4_snap_state(snap) == S4_ST_HUMP_TRACKING &&
+		   s4_snap_valid(snap) == 1U && s4_snap_seq(snap) == 9U,
+		   "snapshot word packs and unpacks correctly on target");
+	TEST_CHECK("S4-U18c",
+		   imu_deg_to_bam8(90.0f) == 64U && imu_deg_to_ob8(10.0f) == 148U &&
+		   imu_bam8_diff(5U, 250U) == 11,
+		   "BAM8 / offset-binary maths correct on target (soft-float)");
+
+	/* ---- event flag semantics used for the shared fault mask ---- */
+	cflg.flgatr = TA_TFIFO | TA_WMUL;
+	cflg.iflgptn = 0;
+	flg_test = tk_cre_flg(&cflg);
+	if (flg_test >= E_OK) {
+		(void)tk_set_flg(
+			flg_test, FLT_IMU_I2C | FLT_LINE_LOST);
+
+		(void)tk_clr_flg(
+			flg_test, (UINT)(~FLT_IMU_I2C));
+
+		tk_ref_flg(flg_test, &rflg);
+
+		TEST_CHECK("S4-U19",
+			rflg.flgptn == FLT_LINE_LOST,
+			"clearing IMU fault preserves another subsystem's bit");	
+		(void)tk_del_flg(flg_test);
+	} else {
+		TEST_CHECK("S4-U19", 0, "could not create the test event flag");
+	}
+
+	/* ---- no events lost so far ---- */
+	TEST_CHECK("S4-U20", s4_stat_events_dropped() == 0U,
+		   "no imu events dropped because the queue was full");
+
+	/* ---- INT-02 (example IF-03): kept until Subsystem 3 is replaced ---- */
 	before = s4_lines_received;
 	tk_dly_tsk(3500);
 	TEST_CHECK("INT-02", s4_lines_received >= before + 2,
 		   "summary lines flow from subsystem 3 to subsystem 4");
-
-	/* ============ interim Vehicle Controller + Safety Handler ============ */
-	/* Known start: no ESTOP, no requests, no stale commands or events */
-	(void)tk_clr_flg(flg_safety, 0U);
-	(void)tk_clr_flg(flg_obstacle, ~S5_FLG_OBSTACLE_STOP);
-	while (tk_rcv_mbf(remote_cmd_q, drain, TMO_POL) > 0) {
-	}
-	while (tk_rcv_mbf(mbf_obstacle, &evt, TMO_POL) > 0) {
-	}
-
-	tid_s = app_start_task(safety_task, S4_PRI_SAFETY, 0, "safety_task");
-	tid_v = app_start_task(vehicle_task, S4_PRI_VEHICLE, 0, "vehicle_task");
-	tk_dly_tsk(S4T_SETTLE_MS);
-	s4t_report("started");
-	TEST_CHECK("S4-U03",
-		   tid_s > 0 && tid_v > 0 &&
-		   vc_vehicle_state() == APP_VS_DRIVING && vc_line_gate_is_open(),
-		   "safety + vehicle tasks start; no hold -> DRIVING, line gate open");
-
-	/* IF-B1-02 PAUSE / RESUME (test plays the Wi-Fi task) */
-	(void)s4t_remote(CMD_PAUSE, 1U);
-	tk_dly_tsk(S4T_SETTLE_MS);
-	s4t_report("after PAUSE");
-	TEST_CHECK("S4-U04",
-		   vc_vehicle_state() == APP_VS_PAUSED && s4t_gate_closed(),
-		   "remote PAUSE -> PAUSED, line gate closed (post refused E_OBJ)");
-
-	(void)s4t_remote(CMD_RESUME, 2U);
-	tk_dly_tsk(S4T_SETTLE_MS);
-	s4t_report("after RESUME");
-	TEST_CHECK("S4-U05",
-		   vc_vehicle_state() == APP_VS_DRIVING && vc_line_gate_is_open(),
-		   "remote RESUME -> DRIVING, line gate open again");
-
-	/* IF-06 obstacle events (test plays subsystem 5) */
-	(void)s4t_obstacle(S5_ST_PROFILING, TRUE, S5_ACT_STOP);
-	tk_dly_tsk(S4T_SETTLE_MS);
-	{
-		BOOL held = (vc_vehicle_state() == APP_VS_OBSTACLE_BYPASS) &&
-			    s4t_gate_closed();
-
-		(void)s4t_obstacle(S5_ST_DECIDING, TRUE, S5_ACT_TURN_LEFT);
-		tk_dly_tsk(S4T_SETTLE_MS);
-		held = held && (vc_vehicle_state() == APP_VS_OBSTACLE_BYPASS);
-		(void)s4t_obstacle(S5_ST_MONITORING, FALSE, S5_ACT_CONTINUE);
-		tk_dly_tsk(S4T_SETTLE_MS);
-		s4t_report("after obstacle STOP/TURN_LEFT/CONTINUE");
-		TEST_CHECK("S4-U06",
-			   held && vc_vehicle_state() == APP_VS_DRIVING &&
-			   vc_line_gate_is_open(),
-			   "obstacle STOP and TURN hold the car; CONTINUE releases it");
-	}
-
-	/* IF-07 stop bit alone holds, and releases as soon as it clears
-	   (it must never be latched by the controller) */
-	(void)tk_set_flg(flg_obstacle, S5_FLG_OBSTACLE_STOP);
-	tk_dly_tsk(S4T_SETTLE_MS);
-	{
-		BOOL held = (vc_vehicle_state() == APP_VS_OBSTACLE_BYPASS) &&
-			    s4t_gate_closed();
-
-		(void)tk_clr_flg(flg_obstacle, ~S5_FLG_OBSTACLE_STOP);
-		tk_dly_tsk(S4T_SETTLE_MS);
-		s4t_report("after flg_obstacle STOP set/clear");
-		TEST_CHECK("S4-U07",
-			   held && vc_vehicle_state() == APP_VS_DRIVING &&
-			   vc_line_gate_is_open(),
-			   "S5_FLG_OBSTACLE_STOP holds while set, released when cleared");
-	}
-
-	/* IF-B1-03 remote abort request -> Safety latches ESTOP */
-	(void)tk_set_flg(flg_safety, SAFETY_REQ_REMOTE_ABORT);
-	tk_dly_tsk(S4T_SETTLE_MS);
-	{
-		UINT ptn = s4t_safety_ptn();
-
-		s4t_report("after SAFETY_REQ_REMOTE_ABORT");
-		TEST_CHECK("S4-U08",
-			   (ptn & SAFETY_ESTOP_LATCHED) != 0U &&
-			   (ptn & SAFETY_REQ_REMOTE_ABORT) == 0U &&
-			   vc_vehicle_state() == APP_VS_ERROR && s4t_gate_closed(),
-			   "abort request: Safety clears it, latches ESTOP; VC -> ERROR, gate closed");
-	}
-
-	/* Remote ABORT message is sticky in the controller: even after the
-	   latch is reset (test plays the local reset) and a RESUME arrives,
-	   the car stays stopped.  Leaves the car stopped until reset. */
-	(void)s4t_remote(CMD_ABORT, 3U);
-	tk_dly_tsk(S4T_SETTLE_MS);
-	(void)tk_clr_flg(flg_safety, ~(UINT)SAFETY_ESTOP_LATCHED);
-	(void)s4t_remote(CMD_RESUME, 4U);
-	tk_dly_tsk(S4T_SETTLE_MS);
-	s4t_report("after ABORT, latch reset, RESUME");
-	TEST_CHECK("S4-U09",
-		   vc_vehicle_state() == APP_VS_ERROR && s4t_gate_closed(),
-		   "remote ABORT is sticky: latch reset + RESUME do not restart the car");
 
 	TEST_SUMMARY("subsystem4");
 }

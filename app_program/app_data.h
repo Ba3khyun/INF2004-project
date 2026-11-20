@@ -167,7 +167,7 @@ _Static_assert(APP_BITS_FOR(APP_RETRY_MAX + 1u) == APP_RETRY_BITS, "retry width"
 #define FLT_TELEM_OVERFLOW	(1u << 4)	/* B1: telemetry_q or backlog dropped*/
 #define FLT_PROTO_ERROR		(1u << 5)	/* B1: bad version / reserved bits   */
 #define FLT_ESTOP_LATCHED	(1u << 6)	/* Safety (B4/B5), mirrored by B1    */
-#define FLT_COLLISION		(1u << 7)	/* B4 IMU: shock > 2.5 g             */
+#define FLT_COLLISION		(1u << 7)	/* B4: lift/overturn; legacy bit 7    */
 #define FLT_IMU_I2C		(1u << 8)	/* B4 IMU: I2C read failure          */
 #define FLT_LINE_LOST		(1u << 9)	/* B3 Line Following: LINE_FAULT     */
 #define FLT_LINE_NOT_RECOVERED	(1u << 10)	/* B5 Obstacle: bypass recovery fail */
@@ -189,9 +189,13 @@ _Static_assert((FLT_B1_OWNED & ~(uint32_t)FLT_ALL) == 0u, "fault bit outside mas
  *  REQ bits: set by the requesting task, consumed and cleared by Safety.
  *  ESTOP_LATCHED: set and cleared ONLY by Safety (local reset required).
  * --------------------------------------------------------------------- */
-#define SAFETY_REQ_COLLISION	(1u << 0)	/* set by IMU (B4)             */
+#define SAFETY_REQ_COLLISION	(1u << 0)	/* legacy bit: now pickup/overturn (B4) */
 #define SAFETY_REQ_OBSTACLE_STOP (1u << 1)	/* set by Obstacle (B5)        */
 #define SAFETY_REQ_REMOTE_ABORT	(1u << 2)	/* set by Wi-Fi (B1)           */
+/* Updated demo requirement (11 Nov): lift/overturn, not collision.
+ * Legacy aliases retained so all five buddies keep the same wire layout. */
+#define FLT_PICKUP_OVERTURN      FLT_COLLISION
+#define SAFETY_REQ_PICKUP_END   SAFETY_REQ_COLLISION
 #define SAFETY_ESTOP_LATCHED	(1u << 8)	/* Safety only; read by others */
 
 /* =====================================================================
@@ -498,7 +502,7 @@ static inline int app_rcmd_unpack(const uint8_t in[RCMD_MSG_LEN], APP_CMD *c)
 #define TQ_FIELD_NONE		0u	/* invalid */
 #define TQ_FIELD_VEH_STATE	1u	/* Vehicle Controller (B4) */
 #define TQ_FIELD_SPEED		2u	/* Motion Control (B2)     */
-#define TQ_FIELD_HUMP		3u	/* IMU Processing (B4)     */
+#define TQ_FIELD_HUMP		3u	/* B4 VC relays IMU height  */
 #define TQ_FIELD_OBSTACLE	4u	/* Obstacle Scanning (B5)  */
 #define TQ_FIELD_COUNT		5u	/* ids 0..4 (0 invalid)    */
 #define TQ_FIELD_BITS		3u
@@ -557,5 +561,182 @@ static inline int app_tq_unpack(const uint8_t in[TQ_MSG_LEN], uint32_t *field,
 	*stamp = app_get_u16le(&in[2]);
 	return APP_OK;
 }
+
+/* =====================================================================
+ * Buddy 4 IMU extensions (preserved from the independently tested v9/v10
+ * IMU code).  These are for imu_evt_q and s4_imu_snapshot, not telemetry.
+ *
+ * The shared FLT_* / SAFETY_* definitions above are the only shared
+ * fault and safety patterns.  Do NOT re-add the old provisional 32-bit
+ * flg_faults allocation (whose bit numbers conflict with teammates).
+ *
+ * NOTE: imu_evt_q allows 0..127 mm; telemetry permits only 0..62 mm
+ * (63 = not measured).  Convert/validate deliberately at the Wi-Fi
+ * telemetry boundary; never truncate a hump value silently.
+ * ===================================================================== */
+
+/* ------------------------------------------------------------------ */
+/* Generic field helpers (unsigned only)                               */
+/* ------------------------------------------------------------------ */
+static inline uint32_t ad_mask(uint32_t bits)
+{
+    return (bits >= 32U) ? 0xFFFFFFFFUL : ((1UL << bits) - 1UL);
+}
+
+static inline uint32_t ad_get(uint32_t word, uint32_t shift, uint32_t bits)
+{
+    return (word >> shift) & ad_mask(bits);
+}
+
+/* Returns word with the field replaced by value (value is masked). */
+static inline uint32_t ad_put(uint32_t word, uint32_t shift, uint32_t bits,
+                              uint32_t value)
+{
+    uint32_t m = ad_mask(bits) << shift;
+    return (word & ~m) | ((value << shift) & m);
+}
+
+/* ------------------------------------------------------------------ */
+/* Buddy 4 : imu_evt_q message  (16 bits, queue depth 8)               */
+/*   [2:0]  TYPE       s4_evt_type_t                                   */
+/*   [9:3]  HEIGHT_MM  0..127 mm (valid for HUMP_DONE when VALID = 1)  */
+/*   [10]   VALID      1 = height is a real measurement                */
+/*   [15:11] SEQ       wrapping counter, lets receivers see lost events*/
+/* ------------------------------------------------------------------ */
+typedef enum {
+    S4_EVT_IMU_READY = 0,    /* calibration done, IMU data is usable   */
+    S4_EVT_HUMP_START,       /* hump entered: VC should slow down      */
+    S4_EVT_HUMP_DONE,        /* hump finished: HEIGHT_MM + VALID       */
+    S4_EVT_SHOCK_MINOR,      /* minor shock, logged only               */
+    S4_EVT_IMU_FAULT,        /* IMU unusable (I2C or calibration)      */
+    S4_EVT_COUNT
+} s4_evt_type_t;
+
+#define S4_EVT_TYPE_SHIFT    0U
+#define S4_EVT_TYPE_BITS     3U
+#define S4_EVT_HEIGHT_SHIFT  3U
+#define S4_EVT_HEIGHT_BITS   7U
+#define S4_EVT_VALID_SHIFT   10U
+#define S4_EVT_VALID_BITS    1U
+#define S4_EVT_SEQ_SHIFT     11U
+#define S4_EVT_SEQ_BITS      5U
+#define S4_EVT_HEIGHT_MAX    127U
+
+_Static_assert(S4_EVT_COUNT <= (1U << S4_EVT_TYPE_BITS),
+               "event types do not fit in TYPE field");
+_Static_assert(S4_EVT_TYPE_SHIFT + S4_EVT_TYPE_BITS == S4_EVT_HEIGHT_SHIFT,
+               "TYPE/HEIGHT fields overlap or leave a gap");
+_Static_assert(S4_EVT_HEIGHT_SHIFT + S4_EVT_HEIGHT_BITS == S4_EVT_VALID_SHIFT,
+               "HEIGHT/VALID fields overlap or leave a gap");
+_Static_assert(S4_EVT_VALID_SHIFT + S4_EVT_VALID_BITS == S4_EVT_SEQ_SHIFT,
+               "VALID/SEQ fields overlap or leave a gap");
+_Static_assert(S4_EVT_SEQ_SHIFT + S4_EVT_SEQ_BITS == 16U,
+               "imu_evt message must be exactly 16 bits");
+
+static inline uint16_t s4_evt_pack(s4_evt_type_t type, uint32_t height_mm,
+                                   uint32_t valid, uint32_t seq)
+{
+    uint32_t w = 0UL;
+    if (height_mm > S4_EVT_HEIGHT_MAX) { height_mm = S4_EVT_HEIGHT_MAX; } /* saturate */
+    w = ad_put(w, S4_EVT_TYPE_SHIFT,   S4_EVT_TYPE_BITS,   (uint32_t)type);
+    w = ad_put(w, S4_EVT_HEIGHT_SHIFT, S4_EVT_HEIGHT_BITS, height_mm);
+    w = ad_put(w, S4_EVT_VALID_SHIFT,  S4_EVT_VALID_BITS,  valid);
+    w = ad_put(w, S4_EVT_SEQ_SHIFT,    S4_EVT_SEQ_BITS,    seq);
+    return (uint16_t)w;
+}
+static inline s4_evt_type_t s4_evt_type(uint16_t w)
+{ return (s4_evt_type_t)ad_get(w, S4_EVT_TYPE_SHIFT, S4_EVT_TYPE_BITS); }
+static inline uint32_t s4_evt_height_mm(uint16_t w)
+{ return ad_get(w, S4_EVT_HEIGHT_SHIFT, S4_EVT_HEIGHT_BITS); }
+static inline uint32_t s4_evt_valid(uint16_t w)
+{ return ad_get(w, S4_EVT_VALID_SHIFT, S4_EVT_VALID_BITS); }
+static inline uint32_t s4_evt_seq(uint16_t w)
+{ return ad_get(w, S4_EVT_SEQ_SHIFT, S4_EVT_SEQ_BITS); }
+
+/* ------------------------------------------------------------------ */
+/* Buddy 4 : imu snapshot word (32 bits, ONE writer = IMU task)        */
+/*   Written with a single aligned 32-bit store, read with a single    */
+/*   load, so readers always see a consistent set of values.           */
+/*   [7:0]   HEADING  binary angle, 256 steps = 360 deg (1.4 deg/step) */
+/*   [15:8]  PITCH    offset-binary, 0.5 deg/step, 128 = level         */
+/*   [23:16] ROLL     offset-binary, 0.5 deg/step, 128 = level         */
+/*   [26:24] STATE    s4_imu_state_t                                   */
+/*   [27]    VALID    1 = sensor data fresh and calibrated             */
+/*   [31:28] SEQ      wrapping counter                                 */
+/* ------------------------------------------------------------------ */
+typedef enum {
+    S4_ST_INIT_CALIBRATING = 0,
+    S4_ST_MONITORING,
+    S4_ST_HUMP_TRACKING,
+    S4_ST_SHOCK_DETECTED,
+    S4_ST_FAULT,
+    S4_ST_COUNT
+} s4_imu_state_t;
+
+#define S4_SNAP_HEADING_SHIFT 0U
+#define S4_SNAP_HEADING_BITS  8U
+#define S4_SNAP_PITCH_SHIFT   8U
+#define S4_SNAP_PITCH_BITS    8U
+#define S4_SNAP_ROLL_SHIFT    16U
+#define S4_SNAP_ROLL_BITS     8U
+#define S4_SNAP_STATE_SHIFT   24U
+#define S4_SNAP_STATE_BITS    3U
+#define S4_SNAP_VALID_SHIFT   27U
+#define S4_SNAP_VALID_BITS    1U
+#define S4_SNAP_SEQ_SHIFT     28U
+#define S4_SNAP_SEQ_BITS      4U
+
+_Static_assert(S4_ST_COUNT <= (1U << S4_SNAP_STATE_BITS),
+               "IMU states do not fit in STATE field");
+_Static_assert(S4_SNAP_SEQ_SHIFT + S4_SNAP_SEQ_BITS == 32U,
+               "imu snapshot must be exactly 32 bits");
+_Static_assert(S4_SNAP_HEADING_SHIFT + S4_SNAP_HEADING_BITS == S4_SNAP_PITCH_SHIFT &&
+               S4_SNAP_PITCH_SHIFT + S4_SNAP_PITCH_BITS == S4_SNAP_ROLL_SHIFT &&
+               S4_SNAP_ROLL_SHIFT + S4_SNAP_ROLL_BITS == S4_SNAP_STATE_SHIFT &&
+               S4_SNAP_STATE_SHIFT + S4_SNAP_STATE_BITS == S4_SNAP_VALID_SHIFT &&
+               S4_SNAP_VALID_SHIFT + S4_SNAP_VALID_BITS == S4_SNAP_SEQ_SHIFT,
+               "imu snapshot fields overlap or leave a gap");
+
+static inline uint32_t s4_snap_pack(uint32_t heading_bam8, uint32_t pitch_ob8,
+                                    uint32_t roll_ob8, s4_imu_state_t state,
+                                    uint32_t valid, uint32_t seq)
+{
+    uint32_t w = 0UL;
+    w = ad_put(w, S4_SNAP_HEADING_SHIFT, S4_SNAP_HEADING_BITS, heading_bam8);
+    w = ad_put(w, S4_SNAP_PITCH_SHIFT,   S4_SNAP_PITCH_BITS,   pitch_ob8);
+    w = ad_put(w, S4_SNAP_ROLL_SHIFT,    S4_SNAP_ROLL_BITS,    roll_ob8);
+    w = ad_put(w, S4_SNAP_STATE_SHIFT,   S4_SNAP_STATE_BITS,   (uint32_t)state);
+    w = ad_put(w, S4_SNAP_VALID_SHIFT,   S4_SNAP_VALID_BITS,   valid);
+    w = ad_put(w, S4_SNAP_SEQ_SHIFT,     S4_SNAP_SEQ_BITS,     seq);
+    return w;
+}
+static inline uint32_t s4_snap_heading(uint32_t w) { return ad_get(w, S4_SNAP_HEADING_SHIFT, S4_SNAP_HEADING_BITS); }
+static inline uint32_t s4_snap_pitch(uint32_t w)   { return ad_get(w, S4_SNAP_PITCH_SHIFT,   S4_SNAP_PITCH_BITS); }
+static inline uint32_t s4_snap_roll(uint32_t w)    { return ad_get(w, S4_SNAP_ROLL_SHIFT,    S4_SNAP_ROLL_BITS); }
+static inline s4_imu_state_t s4_snap_state(uint32_t w)
+{ return (s4_imu_state_t)ad_get(w, S4_SNAP_STATE_SHIFT, S4_SNAP_STATE_BITS); }
+static inline uint32_t s4_snap_valid(uint32_t w)   { return ad_get(w, S4_SNAP_VALID_SHIFT,   S4_SNAP_VALID_BITS); }
+static inline uint32_t s4_snap_seq(uint32_t w)     { return ad_get(w, S4_SNAP_SEQ_SHIFT,     S4_SNAP_SEQ_BITS); }
+
+/* ------------------------------------------------------------------ */
+/* Buddy 4 : Vehicle Controller states                              */
+/* The team's APP_VS_* codes are authoritative for telemetry.      */
+/* Keep the VC aliases aligned with those codes (8 states, not 7).  */
+/* ------------------------------------------------------------------ */
+typedef enum {
+    VC_INITIALIZING     = APP_VS_INITIALIZING,
+    VC_DRIVING          = APP_VS_DRIVING,
+    VC_HUMP_CROSSING    = APP_VS_HUMP_CROSSING,
+    VC_OBSTACLE_BYPASS  = APP_VS_OBSTACLE_BYPASS,
+    VC_LINE_SEARCH      = APP_VS_LINE_SEARCH,
+    VC_PAUSED           = APP_VS_PAUSED,
+    VC_ERROR            = APP_VS_ERROR,
+    VC_MISSION_COMPLETE = APP_VS_MISSION_COMPLETE,
+    VC_STATE_COUNT      = APP_VS_COUNT
+} vc_state_t;
+_Static_assert(VC_STATE_COUNT == 8, "vehicle states must fit in 3 bits");
+_Static_assert((uint32_t)VC_MISSION_COMPLETE == APP_VS_MISSION_COMPLETE,
+               "vehicle state and telemetry codes differ");
+
 
 #endif /* APP_DATA_H */

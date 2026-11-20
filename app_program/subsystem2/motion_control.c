@@ -24,6 +24,7 @@
  */
 
 #include "motion_control.h"
+#include "subsystem2.h"
 
 /* ---------------------------------------------------------------------
  *  Pins and constants (unchanged from the original)
@@ -119,13 +120,68 @@ LOCAL UW speed_to_pwm(float speed_percent)
  *  MOTORS SECTION
  * ========================================================== */
 
-void motors_brake(void)
+/* Serialize PWM compare updates across the motion and IMU tasks. The
+ * lock protects only register writes. Logging stays outside it. */
+static ID motor_output_mutex;
+static UW run_ended;
+
+ER motor_output_guard_init(void)
+{
+    T_CMTX cfg = {0};
+    cfg.mtxatr = TA_INHERIT;
+    motor_output_mutex = tk_cre_mtx(&cfg);
+    return motor_output_mutex < E_OK ? motor_output_mutex : E_OK;
+}
+
+BOOL motor_run_ended(void)
+{
+    return __atomic_load_n(&run_ended, __ATOMIC_ACQUIRE) != 0u;
+}
+
+static ER lock_outputs(void)
+{
+    ER er;
+    do {
+        er = tk_loc_mtx(motor_output_mutex, TMO_FEVR);
+    } while (er == E_RLWAI);
+    return er;
+}
+
+static void zero_outputs(void)
 {
 	/* LOW/LOW = Brake (Robo Pico datasheet). */
 	pwm_set_cc(MOTOR_L_A, 0u);
 	pwm_set_cc(MOTOR_L_B, 0u);
 	pwm_set_cc(MOTOR_R_A, 0u);
 	pwm_set_cc(MOTOR_R_B, 0u);
+}
+
+void motors_brake(void)
+{
+    if (lock_outputs() == E_OK) {
+        zero_outputs();
+        (void)tk_unl_mtx(motor_output_mutex);
+    }
+}
+
+void motion_end_run(void)
+{
+    /* Publish first so new writers reject drive even while we wait for
+     * an in-flight register update. Brake after that writer has finished. */
+    __atomic_store_n(&run_ended, 1u, __ATOMIC_RELEASE);
+    motors_brake();
+}
+
+static void drive_motor(UINT low_pin, UINT pwm_pin, float speed_percent)
+{
+    UW level = speed_to_pwm(speed_percent);
+    if (lock_outputs() == E_OK) {
+        if (!motor_run_ended()) {
+            pwm_set_cc(low_pin, 0u);
+            pwm_set_cc(pwm_pin, level);
+        }
+        (void)tk_unl_mtx(motor_output_mutex);
+    }
 }
 
 ER motors_init(void)
@@ -177,15 +233,13 @@ ER motors_init(void)
 /* Motor 1: A = PWM, B = LOW */
 void motor1_forward(float speed_percent)
 {
-	pwm_set_cc(MOTOR_L_B, 0u);
-	pwm_set_cc(MOTOR_L_A, speed_to_pwm(speed_percent));
+	drive_motor(MOTOR_L_B, MOTOR_L_A, speed_percent);
 }
 
 /* Motor 2: A = PWM, B = LOW */
 void motor2_forward(float speed_percent)
 {
-	pwm_set_cc(MOTOR_R_B, 0u);
-	pwm_set_cc(MOTOR_R_A, speed_to_pwm(speed_percent));
+	drive_motor(MOTOR_R_B, MOTOR_R_A, speed_percent);
 }
 
 void motors_forward(float speed_percent)
@@ -201,15 +255,13 @@ void motors_forward(float speed_percent)
 /* Motor 1: A = LOW, B = PWM */
 void motor1_reverse(float speed_percent)
 {
-	pwm_set_cc(MOTOR_L_A, 0u);
-	pwm_set_cc(MOTOR_L_B, speed_to_pwm(speed_percent));
+	drive_motor(MOTOR_L_A, MOTOR_L_B, speed_percent);
 }
 
 /* Motor 2: A = LOW, B = PWM */
 void motor2_reverse(float speed_percent)
 {
-	pwm_set_cc(MOTOR_R_A, 0u);
-	pwm_set_cc(MOTOR_R_B, speed_to_pwm(speed_percent));
+	drive_motor(MOTOR_R_A, MOTOR_R_B, speed_percent);
 }
 
 void motors_reverse(float speed_percent)

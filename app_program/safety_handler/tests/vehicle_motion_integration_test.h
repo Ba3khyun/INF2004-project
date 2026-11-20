@@ -1,0 +1,4 @@
+#ifndef VEHICLE_MOTION_INTEGRATION_TEST_H
+#define VEHICLE_MOTION_INTEGRATION_TEST_H
+int vehicle_motion_integration_test_run(void);
+#endif

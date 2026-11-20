@@ -13,6 +13,8 @@
 #include "../subsystem2/subsystem2.h"	/* sem_slots, mpf_samples (read only) */
 #include "../subsystem3/subsystem3.h"	/* IF-04: app_stats, mtx_stats */
 
+#define S4_MONITOR_DEBUG_PRINT 0 // aAdded: Set to 1 to enable debug printing of monitor task information, 0 to disable.
+
 EXPORT UW	s4_lines_received;
 
 /*
@@ -54,7 +56,9 @@ EXPORT void monitor_task(INT stacd, void *exinf)
 
 	(void)stacd; (void)exinf;
 
+	#if S4_MONITOR_DEBUG_PRINT
 	tm_printf((UB*)"monitor: I am task %d\n", tk_get_tid());
+	#endif
 
 	while (1) {
 		/* 1. Arm the one-shot alarm, then wait for EITHER bit.
@@ -66,20 +70,26 @@ EXPORT void monitor_task(INT stacd, void *exinf)
 		tk_stp_alm(alm_monitor);	/* cancel it if a batch came first */
 
 		if (er == E_TMOUT) {
+			#if S4_MONITOR_DEBUG_PRINT
 			tm_printf((UB*)"monitor: nothing at all happened?\n");
+			#endif
 			continue;
 		}
+		// CHANGED: The alarm bit is now only used for debug printing, not for batch processing.
 		if (flgptn & FLG_ALARM) {
+		#if S4_MONITOR_DEBUG_PRINT
 			tm_printf((UB*)"monitor: alarm -- no batch for %d ms\n",
-				  S4_ALARM_MS);
+					S4_ALARM_MS);
+		#endif
 		}
-
 		/* 2. Drain the message buffer without waiting (TMO_POL).
 		      tk_rcv_mbf returns the message length, or an error. */
 		while ((len = tk_rcv_mbf(mbf_summary, text, TMO_POL)) > 0) {
 			text[len] = '\0';
 			s4_lines_received++;
+			#if S4_MONITOR_DEBUG_PRINT
 			tm_printf((UB*)"monitor: batch  %s\n", text);
+			#endif
 		}
 
 		/* 3. Copy the stats under subsystem 3's mutex, print outside
@@ -91,11 +101,13 @@ EXPORT void monitor_task(INT stacd, void *exinf)
 		tk_get_tim(&now);
 		tk_ref_sem(sem_slots, &rsem);
 		tk_ref_mpf(mpf_samples, &rmpf);
+		#if S4_MONITOR_DEBUG_PRINT
 		tm_printf((UB*)"monitor: t=%u ms  samples=%u  min=%d max=%d avg=%d"
 			  "  free slots=%d  free blocks=%d\n",
 			  now.lo, snap.received, snap.min, snap.max,
 			  snap.received ? (INT)(snap.sum / (W)snap.received) : 0,
 			  rsem.semcnt, (INT)rmpf.frbcnt);
+		#endif
 
 		/* 4. Every few reports, pause or resume subsystem 1's LED task
 		      (IF-05) and look at it with tk_ref_tsk. */
@@ -111,9 +123,11 @@ EXPORT void monitor_task(INT stacd, void *exinf)
 			led_paused = !led_paused;
 
 			tk_ref_tsk(tid_led, &rtsk);
+			#if S4_MONITOR_DEBUG_PRINT
 			tm_printf((UB*)"monitor: LED task %s, state=%s, pri=%d\n",
 				  led_paused ? "paused" : "resumed",
 				  state_name(rtsk.tskstat), rtsk.tskpri);
+			#endif
 		}
 	}
 }

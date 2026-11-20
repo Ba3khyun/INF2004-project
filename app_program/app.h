@@ -39,6 +39,7 @@
 #define PRI_BARCODE		22	/* Barcode Decoding (B3) */
 #define PRI_WIFI		40	/* Wi-Fi Telemetry (B1) = cyw43 service task */
 
+
 /* ---------------------------------------------------------------------
  *  Shared kernel objects created by app_shared.c BEFORE any subsystem's
  *  _init().  INTERIM: the Vehicle Controller (B4) and Safety Handler

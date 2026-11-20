@@ -188,7 +188,6 @@ sends to it or waits on it. Agree on the data format before coding.
 | IF-B1-05 | all → all | event flag (owner Safety; interim `app_shared.c`) | `flg_fault` | `FLT_*` bits, one owner per bit, `tk_set_flg`/`tk_clr_flg` only | proposed by B1 |
 | IF-06 | S5 → Vehicle Controller | message buffer (owned by S5) | `mbf_obstacle` | 32-bit event word, `s5_evt_pack()` in `subsystem5.h`: STOP, decision, then CONTINUE when the path is clear; drop-oldest | proposed by B5 |
 | IF-07 | S5 → Safety / VC | event flag (owned by S5) | `flg_obstacle` | `S5_FLG_OBSTACLE_STOP`, `S5_FLG_FAULT_NO_ECHO`; set/cleared by S5 only | proposed by B5 |
-| IF-B4-01 | S3 → Vehicle Controller → S2 | function + mutex (owner VC, interim `subsystem4/task_vehicle.c`) | `vc_line_cmd_post()`, `mtx_vc_gate` | line-following `MC_CMD_*` is posted to `motion_cmd_q` only while the gate is open; `E_OBJ` while closed (pause, obstacle, ESTOP) | interim, integration |
 
 Each interface is tested by at least one integration test
 (`testing/integration/TEST_LOG.md`).

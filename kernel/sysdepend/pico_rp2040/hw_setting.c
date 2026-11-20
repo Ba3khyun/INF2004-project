@@ -187,6 +187,15 @@ EXPORT void knl_startup_hw(void)
 	/* Startup System Clock */
 	startup_clock(CLKATR_USB | CLKATR_ADC | CLKATR_RTC | CLKATR_PREI);
 
+	/*
+	* RP2040 TIMER uses the watchdog tick generator as its
+	* microsecond reference.
+	*
+	* clk_ref = 12 MHz, so divide by 12 for a 1 MHz tick.
+	* Bit 9 enables the tick generator.
+	*/
+	out_w(WDOG_TICK, 0x0000020CU);
+
 	for(INT i = 0; (rst = module_tbl[i]); i++) {
 		set_w(RESETS_RESET, rst);
 		clr_w(RESETS_RESET, rst);

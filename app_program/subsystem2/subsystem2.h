@@ -61,10 +61,36 @@ IMPORT void		motion_cyclic_handler(void *exinf);
 
 /* Queue one command.  Continuous drive commands run until replaced or halted.
    Never blocks; returns E_OK, E_PAR (unknown code) or E_TMOUT (queue full). */
+/* Task context. Permanently inhibit drive and zero both motor outputs. */
+IMPORT void motion_end_run(void);
 IMPORT ER	motion_cmd_post(UB cmd);
 /* TRUE only when the motion task is idle, no command is queued and
    SAFETY_ESTOP_LATCHED is clear (i.e. a new move would be accepted). */
 IMPORT BOOL	motion_is_idle(void);
+
+/* Cumulative forward/arc travel distance in millimetres. */
+IMPORT UW motion_get_distance_mm(void);
+
+/* B2 <-> B4 approved software interface (direction is COMMAND-INFERRED).
+ * SINGLE-CHANNEL encoder edges cannot establish real wheel direction.
+ * At 100 Hz, motion_task publishes a consistent read-only snapshot. */
+typedef struct {
+    INT left_signed_mm;
+    INT right_signed_mm;
+    UW sample_ms;
+    UW sequence;
+    UW direction_inferred; /* 1 when movement mode supplies sign, else 0 */
+} motion_wheel_feedback_t;
+IMPORT ER motion_get_wheel_feedback(motion_wheel_feedback_t *out);
+
+/* Percent of Buddy 2's normal PWM settings, 0..100. Writes only a 32-bit
+ * request; by default DOES NOT apply it to PWM (see task_motion.c gate).
+ * Normal 100%, hump proposed 45%, invalid/unsafe proposed 0%.
+ * Only the Vehicle Controller should request this in live operation. */
+#define MC_SPEED_CAP_NORMAL 100u
+#define MC_SPEED_CAP_HUMP   45u
+IMPORT ER motion_speed_cap_request(UW percent);
+IMPORT UW motion_speed_cap_requested(void);
 
 /* Private to subsystem 2 */
 IMPORT void	motion_task(INT stacd, void *exinf);

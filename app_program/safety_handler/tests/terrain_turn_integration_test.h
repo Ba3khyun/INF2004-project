@@ -1,0 +1,4 @@
+#ifndef B4_TERRAIN_TURN_INTEGRATION_TEST_H
+#define B4_TERRAIN_TURN_INTEGRATION_TEST_H
+int terrain_turn_integration_test_run(void);
+#endif

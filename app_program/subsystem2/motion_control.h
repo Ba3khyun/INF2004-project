@@ -25,6 +25,8 @@
 
 /* Motors.  motors_init() must run on the owning task before any other
    motor call; it releases the PWM block from reset. */
+ER   motor_output_guard_init(void);
+BOOL motor_run_ended(void);
 ER   motors_init(void);
 void motors_brake(void);
 

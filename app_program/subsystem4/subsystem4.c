@@ -1,83 +1,87 @@
 /*
  *	subsystem4.c
- *	Subsystem 4 -- Monitor (template example) plus the INTERIM Vehicle
- *	Controller and Safety Handler (task_vehicle.c): creates their objects
- *	and starts their tasks.
- *
- *	APIs shown: tk_cre_flg, tk_cre_mbf, tk_cre_alm, tk_cre_mtx
+ *	Subsystem 4 -- IMU subsystem (GY-511 / LSM303DLHC).
+ *	Reads the accelerometer and magnetometer, computes pitch, roll and
+ *	heading, detects humps and shocks.  The work is done by imu_task(),
+ *	woken every 10 ms by a cyclic handler.  This file only creates the
+ *	kernel objects and starts the tasks.
  */
 
 #include "subsystem4.h"
+#include "../../device/include/dev_i2c.h"
 
-EXPORT ID	mbf_summary;	/* IF-03 */
-EXPORT ID	flg_events;	/* IF-03 */
-EXPORT ID	alm_monitor;
+/* Reporting objects shared with the monitor and Subsystem 3 (example code). */
+EXPORT ID mbf_summary = -1;
+EXPORT ID flg_events  = -1;
+EXPORT ID alm_monitor = -1;
+
+/* Objects owned only by Subsystem 4 */
+EXPORT ID flg_imu     = -1;
+EXPORT ID cyc_imu     = -1;
+EXPORT ID mbf_imu_evt = -1;
+EXPORT ID s4_i2c_dev  = -1;
 
 EXPORT ER subsystem4_init(void)
 {
-	T_CFLG	cflg = {0};
-	T_CMBF	cmbf = {0};
-	T_CALM	calm = {0};
+	T_CMBF cmbf = {0};
+	T_CFLG cflg = {0};
+	T_CALM calm = {0};
+	T_CCYC ccyc = {0};
 
-	/* Event flag: a 32-bit pattern of bits.  Tasks wait for a bit (or a
-	   combination of bits) to be set. */
-	cflg.flgatr  = TA_TFIFO | TA_WMUL;	/* allow several waiters */
-	cflg.iflgptn = 0;			/* all bits clear to begin with */
-	flg_events = tk_cre_flg(&cflg);
-	if (flg_events < E_OK) {
-		return flg_events;
-	}
-
-	/* Message buffer: COPIES variable-length data into a kernel ring
-	   buffer.  Here it carries short text lines from subsystem 3. */
+	/* ---- example summary buffer (kept for Subsystem 3) ---- */
 	cmbf.mbfatr = TA_TFIFO;
-	cmbf.bufsz  = 4 * S4_SUMMARY_MAX;	/* total buffer size, bytes */
-	cmbf.maxmsz = S4_SUMMARY_MAX;		/* largest single message */
+	cmbf.bufsz = 512;
+	cmbf.maxmsz = S4_SUMMARY_MAX;
 	mbf_summary = tk_cre_mbf(&cmbf);
-	if (mbf_summary < E_OK) {
-		return mbf_summary;
-	}
+	if (mbf_summary < E_OK) { return (ER)mbf_summary; }
 
-	/* Alarm handler: called ONCE, a given time after tk_sta_alm().
-	   The monitor task re-arms it each time round its loop. */
+	cflg.flgatr = 0;
+	cflg.iflgptn = 0;
+	flg_events = tk_cre_flg(&cflg);
+	if (flg_events < E_OK) { return (ER)flg_events; }
+
 	calm.almatr = TA_HLNG;
-	calm.almhdr = (FP)monitor_alarm_handler;
+	calm.almhdr = monitor_alarm_handler;
 	alm_monitor = tk_cre_alm(&calm);
-	if (alm_monitor < E_OK) {
-		return alm_monitor;
-	}
+	if (alm_monitor < E_OK) { return (ER)alm_monitor; }
 
-	/* Interim Vehicle Controller: the line gate mutex (IF-B4-01).
-	   Priority inheritance: line following (16) holds it only for a
-	   flag check and a non-blocking send. */
-	{
-		T_CMTX	cmtx = {0};
+	/* ---- IMU: imu_evt_q, uint16_t messages, depth 8 ---- */
+	cmbf.mbfatr = TA_TFIFO;
+	cmbf.bufsz = S4_EVT_BUFSZ;
+	cmbf.maxmsz = S4_EVT_MSG_BYTES;
+	mbf_imu_evt = tk_cre_mbf(&cmbf);
+	if (mbf_imu_evt < E_OK) { return (ER)mbf_imu_evt; }
 
-		cmtx.mtxatr = TA_INHERIT;
-		mtx_vc_gate = tk_cre_mtx(&cmtx);
-	}
-	return (mtx_vc_gate < E_OK) ? mtx_vc_gate : E_OK;
+	/* ---- IMU: tick / reinit flag (one waiter: the IMU task) ---- */
+	cflg.flgatr = TA_TFIFO;
+	cflg.iflgptn = 0;
+	flg_imu = tk_cre_flg(&cflg);
+	if (flg_imu < E_OK) { return (ER)flg_imu; }
+
+	/* ---- 10 ms cyclic handler (started by the IMU task once the sensor is ready) ---- */
+	ccyc.cycatr = TA_HLNG;
+	ccyc.cychdr = imu_cyc_handler;
+	ccyc.cyctim = S4_IMU_PERIOD_MS;
+	ccyc.cycphs = 0;
+	cyc_imu = tk_cre_cyc(&ccyc);
+	if (cyc_imu < E_OK) { return (ER)cyc_imu; }
+
+	/* ---- open I2C unit 0 ("iica").  A failure is returned, not ignored. ---- */
+	s4_i2c_dev = tk_opn_dev((UB*)"iica", TD_UPDATE);
+	if (s4_i2c_dev < E_OK) { return (ER)s4_i2c_dev; }
+
+	return E_OK;
 }
 
 EXPORT ER subsystem4_start(void)
 {
 	ID tid;
 
-#if !APP_TEST
-	/* Interim Safety Handler and Vehicle Controller (task_vehicle.c).
-	   Not started in test builds: the subsystem 1 and 2 tests play
-	   these roles on the real remote_cmd_q / flg_safety. */
-	tid = app_start_task(safety_task, S4_PRI_SAFETY, 0, "safety_task");
-	if (tid < E_OK) {
-		return tid;
-	}
-	tid = app_start_task(vehicle_task, S4_PRI_VEHICLE, 0, "vehicle_task");
-	if (tid < E_OK) {
-		return tid;
-	}
-#endif
-
-	/* No affinity: the scheduler may run it on either core */
+	/* Original reporting monitor (example, used by Subsystem 3). */
 	tid = app_start_task(monitor_task, S4_PRI_MONITOR, 0, "monitor_task");
-	return (tid < E_OK) ? tid : E_OK;
+	if (tid < E_OK) { return (ER)tid; }
+
+	/* The IMU task: reads the sensor and publishes events. */
+	tid = app_start_task(imu_task, S4_IMU_PRIORITY, 0, "imu_task");
+	return (tid < E_OK) ? (ER)tid : E_OK;
 }

@@ -1,6 +1,6 @@
 /*
  *	subsystem4.h
- *	Subsystem 4 -- Monitor (reporting).  Student ID: <student ID>.
+ *	Subsystem 4 -- IMU subsystem (GY-511 / LSM303DLHC).  Student ID: 2502446.
  *
  *	Public interface of subsystem 4.  Other subsystems include it as
  *	"../subsystem4/subsystem4.h".
@@ -10,74 +10,108 @@
 #define SUBSYSTEM4_H
 
 #include "../app.h"
+#include "../app_data.h"
+#include "../app_debug.h"
 
-#define S4_PRI_MONITOR		18	/* priority band 18-19 (TEAM.md) */
-#define S4_ALARM_MS		2000	/* report anyway if nothing for 2 s */
-#define S4_LED_TOGGLE_REPORTS	6	/* pause/resume the LED every N reports */
+/* ---- GY-511 hardware (I2C0, Grove 3).  Pins are set in
+ *      device/i2c/sysdepend/rp2040/i2c_cnf_sysdep.h (GP4 SDA, GP5 SCL). ---- */
+#define S4_I2C_PORT          0
+#define S4_I2C_SDA_PIN       4
+#define S4_I2C_SCL_PIN       5
+// #define S4_ACCEL_ADDR        0x19    // Unused
+// #define S4_MAG_ADDR          0x1E    // Unused
 
-/* IF-03: send one text line (at most S4_SUMMARY_MAX bytes, no '\0'
-   needed) to mbf_summary, then set FLG_BATCH in flg_events. */
-#define S4_SUMMARY_MAX		48
-#define FLG_BATCH		0x0002	/* set by subsystem 3 */
-#define FLG_ALARM		0x0001	/* private: set by our alarm handler */
+/* ---- IMU task ---- */
+#define S4_IMU_PERIOD_MS     10     /* 100 Hz (NFR4.1)                                  */
+#define S4_IMU_PRIORITY      19     /* provisional: team plan is 18, TEAM.md band 18-19  */
+#define S4_TICK_WAIT_MS      50     /* longest wait for a tick before counting a miss    */
+#define S4_I2C_FAIL_LIMIT    3      /* NFR4.7: 3 failed reads in a row -> FAULT          */
+#define S4_CAL_MAX_ATTEMPTS  3      /* NFR4.5: retries before FAULT                      */
+#define S4_SHOCK_HOLDOFF     20     /* cycles (200 ms) between minor-shock events        */
+#define S4_USE_BRAKE_COMP    0      /* 1 = subtract encoder acceleration from pitch      */
+#define S4_DEBUG_PRINT       APP_DEBUG_IMU /* periodic 1 Hz IMU serial status */
 
-IMPORT ID	mbf_summary;
-IMPORT ID	flg_events;
+/* ---- kernel objects owned by subsystem 4 ---- */
+#define S4_FLG_TICK          0x01U  /* set by the 10 ms cyclic handler */
+#define S4_FLG_REINIT        0x02U  /* request leaving FAULT           */
+#define S4_EVT_QUEUE_DEPTH   8
+#define S4_EVT_MSG_BYTES     2      /* uint16_t message (app_data.h)   */
+#define S4_EVT_BUFSZ         64     /* 8 messages incl. kernel headers - checked by test S4-U17 */
 
-/* ---------------------------------------------------------------------
- *  INTERIM Vehicle Controller + Safety Handler (Buddy 4 role)
- *  task_vehicle.c.  Ties subsystems 1, 2, 3 and 5 together until Buddy 4's
- *  own code lands; Buddy 4 replaces task_vehicle.c and keeps the names.
- *
- *  safety_task   PRI_SAFETY (5).  Waits on flg_safety for
- *                SAFETY_REQ_REMOTE_ABORT (B1) or SAFETY_REQ_COLLISION (B4
- *                IMU), clears the request (TWF_BITCLR) and latches
- *                SAFETY_ESTOP_LATCHED.  Motion Control brakes on the latch
- *                within one 10 ms tick.  The latch is cleared only by a
- *                local reset (power cycle / RUN button).
- *  vehicle_task  PRI_VEHICLE_CTRL (12).  Every S4_VC_PERIOD_MS:
- *                  remote_cmd_q  (IF-B1-02) ABORT / PAUSE / RESUME
- *                  mbf_obstacle  (IF-06)    STOP ... CONTINUE
- *                  flg_obstacle  (IF-07)    S5_FLG_OBSTACLE_STOP
- *                  flg_safety               SAFETY_ESTOP_LATCHED
- *                decides whether line following may drive the motors
- *                (the "line gate"), halts Motion Control when it closes,
- *                and reports TQ_FIELD_VEH_STATE (IF-B1-01).
- *                Obstacle handling is stop-and-wait: the car stays
- *                stopped until subsystem 5 reports the path clear
- *                (action CONTINUE).  No bypass manoeuvre is driven.
- *
- *  IF-B4-01  S3 -> VC: vc_line_cmd_post(cmd).  Line following posts its
- *            motion commands through the gate instead of straight to
- *            motion_cmd_q.  Returns E_OK when posted, E_OBJ while the
- *            gate is closed (nothing posted), or motion_cmd_post()'s
- *            error.  The gate check and the post are done under
- *            mtx_vc_gate, so no line command can slip in after the
- *            controller's halt.  The gate starts OPEN, and in test builds
- *            (APP_TEST) the two tasks are not started: the on-target
- *            tests play the Safety/VC roles themselves.
- * --------------------------------------------------------------------- */
-#define S4_PRI_SAFETY		PRI_SAFETY		/* 5 */
-#define S4_PRI_VEHICLE		PRI_VEHICLE_CTRL	/* 12 */
-#define S4_VC_PERIOD_MS		10	/* = one kernel tick */
-#define S4_VC_STATE_REPORT_MS	1000	/* re-send vehicle state at least this often */
+IMPORT ID flg_imu;       /* tick + reinit requests for the IMU task          */
+IMPORT ID cyc_imu;       /* 10 ms cyclic handler                             */
+IMPORT ID mbf_imu_evt;   /* imu_evt_q: uint16_t messages, depth 8            */
+IMPORT ID s4_i2c_dev;    /* device ID of "iica" (I2C0)                       */
 
-IMPORT ID	mtx_vc_gate;
-IMPORT ER	vc_line_cmd_post(UB cmd);
+/* ---- read-only status for other subsystems and tests ---- */
+IMPORT volatile UW s4_imu_snapshot;                 /* packed word, see app_data.h */
+/* Non-destructive event taps for Vehicle Controller. These do not drain
+ * imu_evt_q, whose 8 slots may be used by tests/other consumers.
+ * Start count changes on HUMP_START; done word packs the original 16-bit
+ * S4_EVT_HUMP_DONE message in bits 0..15 and a 16-bit generation in 16..31.
+ * A done word of 0 means no completed hump yet. Reads are 32-bit aligned. */
+IMPORT UW   s4_imu_hump_start_count(void);
+IMPORT UW   s4_imu_hump_done_word(void);
+/* Monotonic good-sample age, independent of s4_stat_reset(); UINT32_MAX
+ * until first successful I2C sample. */
+IMPORT UW   s4_imu_good_sample_age_ms(void);
+IMPORT UW   s4_imu_good_sample_count(void);
+/* End-of-demo pickup/overturn event: sticky until reboot; software only. */
+IMPORT UW   s4_imu_pickup_event_count(void);
+IMPORT UW   s4_imu_pickup_reason(void);
+/* Experimental level-lift motion diagnostics; not a direct height sensor. */
+IMPORT UW   s4_imu_lift_peak_up_mg(void);
+IMPORT UW   s4_imu_lift_up_run(void);
+IMPORT UW   s4_imu_lift_max_run(void);
+IMPORT UW   s4_imu_get_snapshot(void);              /* one aligned 32-bit load     */
+IMPORT s4_imu_state_t s4_imu_state(void);
+IMPORT ER   s4_imu_request_reinit(void);            /* called after Safety reset   */
 
-/* IF-B4-02 (on-target tests only, vehicle_task not running): close the
-   line gate and halt (FALSE) or reopen it (TRUE).  The S2 tests close it
-   so line following cannot post commands while they check Motion. */
-IMPORT void	vc_line_gate_set(BOOL open);
-IMPORT BOOL	vc_line_gate_is_open(void);	/* tests: gate state */
-IMPORT UINT	vc_vehicle_state(void);		/* tests: last APP_VS_* decided */
+/* ---- statistics (tests, NFR4.2) ---- */
+IMPORT UW   s4_stat_cycles(void);
+IMPORT UW   s4_stat_cycle_us_max(void);             /* worst execution time        */
+IMPORT UW   s4_stat_period_us_max(void);            /* worst gap between cycles    */
+IMPORT UW   s4_stat_events_dropped(void);
+IMPORT UW   s4_stat_mag_overflow(void);
+IMPORT UW   s4_stat_accel_mg(void);                 /* last |a| in milli-g         */
+IMPORT UW   s4_stat_mag_mgauss(void);               /* last |B| in milli-gauss     */
+/* Monotonic tick tracing: read-only, unaffected by s4_stat_reset(). */
+IMPORT UW   s4_stat_handler_ticks(void);    /* cyclic callback invocations */
+IMPORT UW   s4_stat_tick_flag_errors(void); /* failed tk_set_flg calls      */
+IMPORT UW   s4_stat_wait_timeouts(void);    /* IMU task tick wait timeouts */
+/* Read-only stall diagnostics; stage is last IMU operation reached. */
+IMPORT ID   s4_diag_task_id(void);
+IMPORT UW   s4_diag_stage(void);
+IMPORT UW   s4_diag_stage_age_ms(void);
+IMPORT UW   s4_diag_wakeups(void);
+IMPORT UW   s4_diag_other_wait_errors(void);
+IMPORT void s4_stat_reset(void);
 
-/* Private to subsystem 4 */
-IMPORT void	vehicle_task(INT stacd, void *exinf);
-IMPORT void	safety_task(INT stacd, void *exinf);
-IMPORT ID	alm_monitor;
-IMPORT UW	s4_lines_received;	/* for the tests */
-IMPORT void	monitor_task(INT stacd, void *exinf);
-IMPORT void	monitor_alarm_handler(void *exinf);
+/* ---- Distance from Motion Control (Buddy 2): read-only, monotonic, mm.
+ *      A weak default (returns 0) lives in imu_task.c until Buddy 2 provides it. ---- */
+IMPORT UW   motion_get_distance_mm(void);
+
+/* ---- compatibility interface for the example Subsystem 3 reporting ---- */
+#define S4_SUMMARY_MAX 48
+#define FLG_BATCH      0x0002
+#define FLG_ALARM      0x0001
+#define S4_PRI_MONITOR           18
+#define S4_ALARM_MS              2000
+#define S4_LED_TOGGLE_REPORTS    6
+
+IMPORT ID mbf_summary;
+IMPORT ID flg_events;
+IMPORT ID alm_monitor;
+IMPORT UW s4_lines_received;
+IMPORT void monitor_task(INT stacd, void *exinf);
+IMPORT void monitor_alarm_handler(void *exinf);
+
+/* ---- tasks and handlers ---- */
+IMPORT void imu_task(INT stacd, void *exinf);
+IMPORT void imu_cyc_handler(void *exinf);
+
+/* ---- lifecycle ---- */
+IMPORT ER subsystem4_init(void);
+IMPORT ER subsystem4_start(void);
 
 #endif /* SUBSYSTEM4_H */
