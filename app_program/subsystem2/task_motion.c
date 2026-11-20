@@ -377,20 +377,29 @@ LOCAL void start_motion(MotionState command, BOOL continuous)
 		return;
 	}
 
-	motors_brake();
+	/* Forward and both steering arcs use the same wheel directions.
+	 * Update duty in place and keep the per-wheel stall timers running. */
+	BOOL rolling_adjustment = continuous && continuous_motion &&
+		(motion_state == MOTION_FORWARD || motion_state == MOTION_ARC_RIGHT ||
+		 motion_state == MOTION_ARC_LEFT) &&
+		(command == MOTION_FORWARD || command == MOTION_ARC_RIGHT ||
+		 command == MOTION_ARC_LEFT);
+	if (!rolling_adjustment) {
+		motors_brake();
 
-	start_left = encoder_get_left_count();
-	start_right = encoder_get_right_count();
+		start_left = encoder_get_left_count();
+		start_right = encoder_get_right_count();
 
-	previous_left = start_left;
-	previous_right = start_right;
+		previous_left = start_left;
+		previous_right = start_right;
 
-	start_time = now_ms();
-	last_left_pulse = start_time;
-	last_right_pulse = start_time;
+		start_time = now_ms();
+		last_left_pulse = start_time;
+		last_right_pulse = start_time;
 
-	left_done = FALSE;
-	right_done = FALSE;
+		left_done = FALSE;
+		right_done = FALSE;
+	}
 	continuous_motion = continuous;
 
 	motion_state = command;

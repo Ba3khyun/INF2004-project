@@ -24,7 +24,6 @@
 
 typedef enum {
     STATE_FOLLOWING_LINE,
-    STATE_READING_BARCODE,
     STATE_LOST_LINE,
     STATE_TIMEOUT_RECOVERY
 } RobotState;
