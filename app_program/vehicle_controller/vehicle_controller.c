@@ -24,6 +24,19 @@
 /* Buddy 2 applies the request only in powered handoff builds. */
 #define VC_SEND_SPEED_CAP_REQUEST 1
 
+/* Powered handoff: Buddy 2 latches its own EMERGENCY_STOP (FLT_MOTOR) on an
+ * encoder or movement timeout, and only MC_CMD_CLEAR releases it.  The VC
+ * holds the car, waits, clears and retries a bounded number of times, then
+ * stays stopped (ERROR) until reboot.  The count resets after a quiet run. */
+#define VC_MOTOR_RETRY_WAIT_MS   1000u
+#define VC_MOTOR_RETRY_MAX       3u
+#define VC_MOTOR_RETRY_RESET_MS  10000u
+/* Powered handoff: an IMU I2C fault (e.g. a glitch when the motors start)
+ * is retried: the VC asks Buddy 4's IMU task to reinitialise and
+ * recalibrate.  The car stays halted (IMU not ready) until it is back.
+ * A pickup/overturn end-of-demo is never retried. */
+#define VC_IMU_REINIT_PERIOD_MS  2000u
+
 
 static const vma_codes_t vc5a_codes = {
     MC_CMD_DRIVE_FORWARD, MC_CMD_STEER_LEFT, MC_CMD_STEER_RIGHT,
@@ -106,6 +119,36 @@ UW vehicle_controller_remote_consumed(void) { return g_bridge.remote_count; }
 UW vehicle_controller_obstacle_consumed(void) { return g_bridge.obstacle_count; }
 UW vehicle_controller_pickup_terminal(void) { return g_bridge.pickup_terminal; }
 
+static const char *vc_state_name(UW s)
+{
+    switch (s) {
+    case APP_VS_INITIALIZING:     return "INITIALIZING";
+    case APP_VS_DRIVING:          return "DRIVING";
+    case APP_VS_HUMP_CROSSING:    return "HUMP_CROSSING";
+    case APP_VS_OBSTACLE_BYPASS:  return "OBSTACLE";
+    case APP_VS_LINE_SEARCH:      return "LINE_SEARCH";
+    case APP_VS_PAUSED:           return "PAUSED";
+    case APP_VS_ERROR:            return "ERROR";
+    case APP_VS_MISSION_COMPLETE: return "MISSION_COMPLETE";
+    default:                      return "?";
+    }
+}
+
+/* One line, printed only when the state or a hold reason changes, so the
+ * console always says why the car is (not) moving. */
+static void vc_print_status(UW state, UW why)
+{
+    tm_printf((UB*)"[VC] state=%s%s%s%s%s%s%s%s%s\n", vc_state_name(state),
+              why ? "  hold:" : "",
+              (why & 0x01u) ? " IMU-not-ready" : "",
+              (why & 0x02u) ? " safety-request" : "",
+              (why & 0x04u) ? " ESTOP" : "",
+              (why & 0x08u) ? " obstacle" : "",
+              (why & 0x10u) ? " obstacle-sensor-fault" : "",
+              (why & 0x20u) ? " remote-pause/abort" : "",
+              (why & 0x40u) ? " motor-fault" : "");
+}
+
 ER vehicle_controller_init(void)
 {
     vc_core_init(&vc);
@@ -142,7 +185,17 @@ static void vehicle_controller_task(INT stacd, void *exinf)
 #endif
 #if VC_POWERED_HANDOFF
     UB last_posted = 0u;
+    INT motor_fault_seen = 0;   /* FLT_MOTOR currently set */
+    INT motor_failed = 0;       /* retries used up: stay stopped */
+    UINT motor_retries = 0u;
+    UW motor_fault_ms = 0u;     /* fault seen / last clear sent */
+    UW motor_clear_ms = 0u;
+    UW imu_reinit_ms = 0u;
+    INT imu_reinit_pending = 0;
 #endif
+    INT vc_motor_hold = 0;      /* motor fault holds the car (ERROR) */
+    UW last_status_state = APP_VS_COUNT;
+    UW last_status_why = 0xFFFFFFFFu;
     INT was_ready = 0;
     uint32_t last_line_word = 0u;
     /* Independent hump event taps: no imu_evt_q receives here. */
@@ -158,9 +211,13 @@ static void vehicle_controller_task(INT stacd, void *exinf)
         INT safe_to_read = (tk_ref_flg(flg_safety, &safety) == E_OK);
         INT time_ok = (tk_get_otm(&otm) == E_OK);
         UW now = time_ok ? (UW)otm.lo : 0U;
+        /* SHOCK_DETECTED is a 200 ms observation of a minor bump (e.g. a
+         * hump landing), not a sensor fault: keep driving through it.
+         * Collisions/pickups arrive separately via flg_safety. */
         INT monitor_ready = valid &&
             s4_imu_good_sample_age_ms() <= VC_MAX_IMU_AGE_MS &&
-            (state == S4_ST_MONITORING || state == S4_ST_HUMP_TRACKING);
+            (state == S4_ST_MONITORING || state == S4_ST_HUMP_TRACKING ||
+             state == S4_ST_SHOCK_DETECTED);
         vc_output_t output;
 
         if (monitor_ready && !was_ready) {
@@ -219,6 +276,21 @@ static void vehicle_controller_task(INT stacd, void *exinf)
                 vc_core_imu(&vc, VC_IMU_HUMP_DONE, 0U, 0U);
             }
         }
+#if VC_POWERED_HANDOFF
+        if (state == S4_ST_FAULT && s4_imu_pickup_event_count() == 0u && time_ok) {
+            if (!imu_reinit_pending ||
+                (UW)(now - imu_reinit_ms) >= VC_IMU_REINIT_PERIOD_MS) {
+                if (s4_imu_request_reinit() == E_OK) {
+                    if (!imu_reinit_pending)
+                        tm_printf((UB*)"[VC] IMU fault: requesting reinit (car halted)\n");
+                    imu_reinit_pending = 1;
+                    imu_reinit_ms = now;
+                }
+            }
+        } else if (state != S4_ST_FAULT) {
+            imu_reinit_pending = 0;
+        }
+#endif
         was_ready = monitor_ready;
         previous_imu_state = (UW)state;
 
@@ -275,6 +347,41 @@ static void vehicle_controller_task(INT stacd, void *exinf)
         if (g_bridge.paused) vc_core_pause(&vc);
         else vc_core_resume(&vc); /* doesn't clear any safety latch */
 
+#if VC_POWERED_HANDOFF
+        /* Buddy 2 motor fault (encoder/movement timeout): hold, wait,
+         * clear, retry; give up after VC_MOTOR_RETRY_MAX attempts. */
+        {
+            T_RFLG ff;
+            INT fault = (tk_ref_flg(flg_fault, &ff) == E_OK) &&
+                        ((ff.flgptn & FLT_MOTOR) != 0u);
+            if (fault) {
+                if (!motor_fault_seen) {
+                    motor_fault_seen = 1;
+                    motor_fault_ms = now;
+                    tm_printf((UB*)"[VC] Buddy 2 motor fault (check wheels/encoders)\n");
+                } else if (!motor_failed &&
+                           (UW)(now - motor_fault_ms) >= VC_MOTOR_RETRY_WAIT_MS) {
+                    if (motor_retries >= VC_MOTOR_RETRY_MAX) {
+                        motor_failed = 1;
+                        tm_printf((UB*)"[VC] motor fault persists after %u retries: "
+                                  "stopped until reboot\n", (UINT)motor_retries);
+                    } else if (motion_cmd_post(MC_CMD_CLEAR) == E_OK) {
+                        motor_retries++;
+                        motor_fault_ms = now;
+                        motor_clear_ms = now;
+                        tm_printf((UB*)"[VC] clearing motor fault, retry %u/%u\n",
+                                  (UINT)motor_retries, (UINT)VC_MOTOR_RETRY_MAX);
+                    }
+                }
+            } else {
+                motor_fault_seen = 0;
+                if (motor_retries != 0u && !motor_failed &&
+                    (UW)(now - motor_clear_ms) >= VC_MOTOR_RETRY_RESET_MS)
+                    motor_retries = 0u;
+            }
+            vc_motor_hold = motor_fault_seen || motor_failed;
+        }
+#endif
         if (!safe_to_read || !time_ok) {
             vc_core_set_safety(&vc, 1, 1); /* fail closed on RTOS error */
         } else {
@@ -282,7 +389,8 @@ static void vehicle_controller_task(INT stacd, void *exinf)
                      SAFETY_REQ_REMOTE_ABORT;
             vc_core_set_safety(&vc,
                               ((safety.flgptn & req) != 0U) ||
-                              b4_input_bridge_halt(&g_bridge),
+                              b4_input_bridge_halt(&g_bridge) ||
+                              vc_motor_hold,
                               (safety.flgptn & SAFETY_ESTOP_LATCHED) != 0U);
         }
 
@@ -381,10 +489,35 @@ static void vehicle_controller_task(INT stacd, void *exinf)
             __atomic_store_n(&vc_adapter_blockers,
                              p.blockers, __ATOMIC_RELEASE);
 #if VC_POWERED_HANDOFF
+            /* The VC is the only motion_cmd_q writer.  Post on change, and
+             * re-post a drive command that Buddy 2 is no longer executing
+             * (it went idle with nothing queued).  motion_is_idle() is FALSE
+             * while ESTOP is latched, so a refused move is not spammed. */
             UB command = p.safe_command;
+            if (command != MC_CMD_HALT && command == last_posted &&
+                motion_is_idle())
+                last_posted = 0u;
             if (command != last_posted && motion_cmd_post(command) == E_OK)
                 last_posted = command;
 #endif
+        }
+        {
+            UW why = 0u;
+            UW flags = safe_to_read ? safety.flgptn : 0u;
+            if (!monitor_ready) why |= 0x01u;
+            if (!safe_to_read || (flags & (SAFETY_REQ_COLLISION |
+                SAFETY_REQ_OBSTACLE_STOP | SAFETY_REQ_REMOTE_ABORT)) != 0u)
+                why |= 0x02u;
+            if ((flags & SAFETY_ESTOP_LATCHED) != 0u) why |= 0x04u;
+            if (g_bridge.obstacle_hold) why |= 0x08u;
+            if (g_bridge.obstacle_sensor_fault) why |= 0x10u;
+            if (g_bridge.paused || g_bridge.remote_abort_latched) why |= 0x20u;
+            if (vc_motor_hold) why |= 0x40u;
+            if ((UW)vc.state != last_status_state || why != last_status_why) {
+                vc_print_status((UW)vc.state, why);
+                last_status_state = (UW)vc.state;
+                last_status_why = why;
+            }
         }
 
 #if VC_DEBUG_PRINT

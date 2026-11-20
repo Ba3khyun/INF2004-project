@@ -45,7 +45,11 @@
  * alter motor PWM while live ESTOP and command arbitration are unverified.
  * Do not enable this gate just to get tests passing. */
 #include "../vehicle_controller/hump_drive_config.h"
-#define B2_ENABLE_LIVE_SPEED_CAP_PWM VC_POWERED_HANDOFF
+/* OFF: the 45 % hump cap would give 9 % / 5.4 % / 6.75 % PWM, below what is
+ * known to move the car, so a hump would stall into an Encoder timeout.
+ * Every cap-0 request coincides with a VC HALT, so no stop is lost.
+ * Enable only after measuring the minimum PWM that moves the car. */
+#define B2_ENABLE_LIVE_SPEED_CAP_PWM 0
 
 
 /* Speed telemetry (TQ_FIELD_SPEED, cm/s).  WHEEL_DIAMETER_CM is a
@@ -236,6 +240,13 @@ LOCAL INT milli_rev(float rev)
 	return (INT)(rev * 1000.0f + 0.5f);
 }
 
+/* Per-command trace: very frequent once the VC drives; debug builds only. */
+#if APP_DEBUG_B2_COMMAND
+#define MOTION_TRACE(...) tm_printf(__VA_ARGS__)
+#else
+#define MOTION_TRACE(...) ((void)0)
+#endif
+
 LOCAL BOOL is_moving(void)
 {
 	return motion_state == MOTION_FORWARD ||
@@ -391,19 +402,19 @@ LOCAL void start_motion(MotionState command, BOOL continuous)
 		target_revolutions = continuous ? 0.0f : FORWARD_REVOLUTIONS;
 		if (command == MOTION_ARC_RIGHT)
 		{
-			tm_printf((UB *)"\nmotion: starting gentle right arc...\n");
+			MOTION_TRACE((UB *)"\nmotion: starting gentle right arc...\n");
 			motor1_forward(capped_pwm(MOVE_PWM));
 			motor2_reverse(capped_pwm(STEER_RIGHT_INNER_PWM));
 		}
 		else if (command == MOTION_ARC_LEFT)
 		{
-			tm_printf((UB *)"\nmotion: starting gentle left arc...\n");
+			MOTION_TRACE((UB *)"\nmotion: starting gentle left arc...\n");
 			motor1_forward(capped_pwm(STEER_RIGHT_INNER_PWM));
 			motor2_reverse(capped_pwm(MOVE_PWM));
 		}
 		else
 		{
-			tm_printf((UB *)"\nmotion: starting %sFORWARD movement...\n",
+			MOTION_TRACE((UB *)"\nmotion: starting %sFORWARD movement...\n",
 					  continuous ? "continuous " : "");
 			motor1_forward(capped_pwm(MOVE_PWM));
 			motor2_reverse(capped_pwm(MOVE_PWM));
@@ -412,14 +423,14 @@ LOCAL void start_motion(MotionState command, BOOL continuous)
 	else if (command == MOTION_LEFT)
 	{
 		target_revolutions = continuous ? 0.0f : TURN_REVOLUTIONS;
-		tm_printf((UB *)"\nmotion: starting %sLEFT turn...\n",
+		MOTION_TRACE((UB *)"\nmotion: starting %sLEFT turn...\n",
 				  continuous ? "continuous " : "");
 		motors_left(capped_pwm(TURN_PWM));
 	}
 	else if (command == MOTION_RIGHT)
 	{
 		target_revolutions = continuous ? 0.0f : TURN_REVOLUTIONS;
-		tm_printf((UB *)"\nmotion: starting %sRIGHT turn...\n",
+		MOTION_TRACE((UB *)"\nmotion: starting %sRIGHT turn...\n",
 				  continuous ? "continuous " : "");
 		motors_right(capped_pwm(TURN_PWM));
 	}
@@ -586,7 +597,7 @@ LOCAL void process_command(UB cmd)
 			continuous_motion = FALSE;
 			left_done = TRUE;
 			right_done = TRUE;
-			tm_printf((UB *)"\nmotion: halted by line-follow controller.\n");
+			MOTION_TRACE((UB *)"\nmotion: halted by line-follow controller.\n");
 		}
 		break;
 	default:

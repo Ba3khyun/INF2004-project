@@ -3,7 +3,10 @@
 
 #include "../app.h"
 
-/* Phase 3: passive line-intent receiver. No motor commands issued. */
+/* Vehicle Controller: sole writer of Buddy 2's motion_cmd_q in normal
+ * builds (VC_POWERED_HANDOFF, hump_drive_config.h).  Buddy 3 posts line
+ * intents here; Buddy 1/4/5 inputs and flg_safety decide what is driven.
+ * Test builds keep it passive (preview only). */
 ER vehicle_controller_init(void);
 ER vehicle_controller_start(void);
 

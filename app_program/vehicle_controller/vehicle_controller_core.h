@@ -66,6 +66,8 @@ typedef struct {
     uint8_t mission_complete;
     uint8_t last_hump_valid;
     uint8_t last_hump_mm;
+    uint8_t search_active;      /* line lost: Buddy 3 recovery running */
+    uint32_t search_start_ms;
 } vc_core_t;
 
 /* Straight, marked approach followed by a short unmarked ramp. */
@@ -75,6 +77,9 @@ typedef struct {
 #define VC_HUMP_GAP_MM 250u
 
 #define VC_LINE_TIMEOUT_MS 500u
+/* Line lost: Buddy 3's recovery steer/pivot intents are executed for at
+ * most this long (state LINE_SEARCH), then the car halts and waits. */
+#define VC_LINE_SEARCH_MAX_MS 5000u
 
 void vc_core_init(vc_core_t *vc);
 void vc_core_line(vc_core_t *vc, vc_line_intent_t intent, uint32_t now_ms);

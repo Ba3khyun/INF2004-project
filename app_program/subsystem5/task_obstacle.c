@@ -328,6 +328,11 @@ EXPORT void obstacle_task(INT stacd, void *exinf)
 			(void)tk_clr_flg(flg_obstacle, ~S5_FLG_OBSTACLE_STOP);
 
 			if (prof.action == S5_ACT_CONTINUE) {
+				/* The Vehicle Controller releases its obstacle hold
+				   only on a MONITORING + CONTINUE event (no obstacle),
+				   so send that too, after the stop bit is cleared. */
+				prof = (S5_PROFILE){0};
+				publish(S5_ST_MONITORING, S5_ACT_CONTINUE, fault_active);
 				hold_sent = FALSE;	/* CONTINUE just sent */
 				state = S5_ST_MONITORING;
 			} else {

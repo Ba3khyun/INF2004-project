@@ -43,8 +43,13 @@ int safety_phase4f_checks_run(void)
     B4_CHECK(vc_core_step(&v, 115u) == VC_OUTPUT_PIVOT_LEFT);
     vc_core_line(&v, VC_INTENT_PIVOT_RIGHT, 116u);
     B4_CHECK(vc_core_step(&v, 117u) == VC_OUTPUT_PIVOT_RIGHT);
+    /* Line lost: Buddy 3's fresh recovery pivot is executed (bounded line
+     * search), and a lost-line/stop intent halts. */
     vc_core_line_visible(&v, 0);
-    B4_CHECK(vc_core_step(&v, 118u) == VC_OUTPUT_HALT && v.state == VC_LINE_SEARCH);
+    B4_CHECK(vc_core_step(&v, 118u) == VC_OUTPUT_PIVOT_RIGHT && v.state == VC_LINE_SEARCH);
+    vc_core_line(&v, VC_INTENT_LINE_LOST, 119u);
+    vc_core_line_visible(&v, 0);
+    B4_CHECK(vc_core_step(&v, 119u) == VC_OUTPUT_HALT && v.state == VC_LINE_SEARCH);
     vc_core_line_visible(&v, 1);
     vc_core_line(&v, VC_INTENT_FORWARD, 120u);
     B4_CHECK(vc_core_step(&v, 620u) == VC_OUTPUT_FORWARD); /* 500ms is still fresh */
@@ -68,6 +73,23 @@ int safety_phase4f_checks_run(void)
     B4_CHECK(vc_core_step(&v, 707u) == VC_OUTPUT_FORWARD && v.state == VC_DRIVING);
     vc_core_complete(&v);
     B4_CHECK(vc_core_step(&v, 708u) == VC_OUTPUT_HALT && v.state == VC_MISSION_COMPLETE);
+
+    /* Line search budget: recovery intents stop after VC_LINE_SEARCH_MAX_MS. */
+    vc_core_init(&v);
+    vc_core_imu(&v, VC_IMU_READY, 0, 0);
+    vc_core_line(&v, VC_INTENT_STEER_LEFT, 1000u);
+    vc_core_line_visible(&v, 0);
+    B4_CHECK(vc_core_step(&v, 1000u) == VC_OUTPUT_STEER_LEFT);
+    vc_core_line(&v, VC_INTENT_PIVOT_LEFT, 1000u + VC_LINE_SEARCH_MAX_MS);
+    vc_core_line_visible(&v, 0);
+    B4_CHECK(vc_core_step(&v, 1000u + VC_LINE_SEARCH_MAX_MS) == VC_OUTPUT_PIVOT_LEFT);
+    vc_core_line(&v, VC_INTENT_PIVOT_LEFT, 1001u + VC_LINE_SEARCH_MAX_MS);
+    vc_core_line_visible(&v, 0);
+    B4_CHECK(vc_core_step(&v, 1001u + VC_LINE_SEARCH_MAX_MS) == VC_OUTPUT_HALT &&
+             v.state == VC_LINE_SEARCH);
+    vc_core_line(&v, VC_INTENT_FORWARD, 1002u + VC_LINE_SEARCH_MAX_MS);
+    B4_CHECK(vc_core_step(&v, 1002u + VC_LINE_SEARCH_MAX_MS) == VC_OUTPUT_FORWARD &&
+             v.state == VC_DRIVING && !v.search_active);
 
     /* Wrap-around-safe intent age is handled by unsigned subtraction. */
     vc_core_init(&v);

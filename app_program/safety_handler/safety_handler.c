@@ -1,17 +1,22 @@
-/* Phase 4A: observe-only Safety Handler. NO shared flag writes or motor calls.
- * This is NOT a functioning physical emergency stop! Do not energize motors.
- * The priority-5 task reads the existing flg_safety object. Its logical
- * latch is independent from the actual SAFETY_ESTOP_LATCHED bit.
+/* Safety Handler (priority 5).  Normal builds: any SAFETY_REQ_* bit latches
+ * SAFETY_ESTOP_LATCHED in flg_safety and Buddy 2 brakes on it.  Today only
+ * remote abort (B1) and pickup/overturn (B4, = COLLISION) set them.  Buddy 5
+ * signals obstacles through flg_obstacle, NOT SAFETY_REQ_OBSTACLE_STOP:
+ * setting that bit would end the run on every obstacle.
+ * Test builds: observe only.
+ * The logical latch below is also kept for diagnostics.
  */
 #include "safety_handler.h"
 #include "../app_debug.h"
 #include "safety_core.h"
 #include "safety_estop_bridge.h"
 
-/* Phase 4D integration switch, deliberately OFF for all shipped builds.
- * Do NOT enable without Buddy 2/Buddy 5 safety review and a test plan.
- * Active path asserts ESTOP ONLY; it never clears it. */
-#define SH_ENABLE_SHARED_ESTOP_ASSERT 0
+/* Phase 4D integration switch: ON in normal builds, so a remote abort or a
+ * collision/pickup request latches the shared ESTOP and Buddy 2 brakes
+ * within one 10 ms motion tick, independently of the Vehicle Controller.
+ * OFF in test builds: the self-tests set and clear flg_safety themselves.
+ * Active path asserts ESTOP ONLY; it never clears it (reset = reboot). */
+#define SH_ENABLE_SHARED_ESTOP_ASSERT (!APP_TEST)
 #if APP_TEST && SH_ENABLE_SHARED_ESTOP_ASSERT
 #error "Do not enable live ESTOP assertion while subsystem self-tests manipulate safety flags"
 #endif

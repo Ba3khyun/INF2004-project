@@ -343,6 +343,50 @@ EXPORT void subsystem2_test(void)
 		(void)motion_cmd_post(MC_CMD_CLEAR);
 		tk_dly_tsk(50);
 	}
+	{
+		/* S2-M04..M06: per-direction wheel diagnostic.  Each discrete
+		   move (F 0.5 rev at MOVE_PWM, L/R 0.25 rev pivot at TURN_PWM)
+		   must make BOTH encoders count and end without FLT_MOTOR.
+		   The printout names the wheel that did not count. */
+		static const struct { UB cmd; const char *id; const char *name; UW min; } mv[] = {
+			{ MC_CMD_FORWARD, "S2-M04", "forward 0.5 rev", 250u },
+			{ MC_CMD_LEFT,    "S2-M05", "pivot left 0.25 rev", 120u },
+			{ MC_CMD_RIGHT,   "S2-M06", "pivot right 0.25 rev", 120u },
+		};
+		UINT	k;
+
+		for (k = 0u; k < sizeof(mv) / sizeof(mv[0]); k++) {
+			UW	l0, r0, dl, dr;
+			INT	t;
+			BOOL	flt;
+
+			(void)motion_cmd_post(MC_CMD_CLEAR);
+			tk_dly_tsk(300);		/* wheels coast to rest */
+			l0 = encoder_get_left_count();
+			r0 = encoder_get_right_count();
+			UW	on;
+
+			(void)motion_cmd_post(mv[k].cmd);
+			tk_dly_tsk(50);
+			on = pwm_cc_any();	/* 0 = move refused, not a wheel fault */
+			for (t = 50; t < 4500 && pwm_cc_any() != 0u; t += 10) {
+				tk_dly_tsk(10);
+			}
+			tk_dly_tsk(200);
+			dl = encoder_get_left_count() - l0;
+			dr = encoder_get_right_count() - r0;
+			flt = fault_motor();
+			tm_printf((UB*)"        %s: started=%s pulses left(GP7)=%u right(GP6)=%u,"
+				  " ran ~%d ms, FLT_MOTOR=%d%s%s\n", mv[k].name,
+				  on ? "yes" : "NO (refused)", dl, dr, t, flt,
+				  (on && dl < mv[k].min) ? "  <-- LEFT wheel/encoder not counting" : "",
+				  (on && dr < mv[k].min) ? "  <-- RIGHT wheel/encoder not counting" : "");
+			TEST_CHECK(mv[k].id, on != 0u && !flt &&
+				   dl >= mv[k].min && dr >= mv[k].min, mv[k].name);
+		}
+		(void)motion_cmd_post(MC_CMD_CLEAR);
+		tk_dly_tsk(50);
+	}
 #else
 	tm_printf((UB*)"        S2-M01/M02 not built (S2_TEST_MOTORS=0): motors never driven\n");
 #endif

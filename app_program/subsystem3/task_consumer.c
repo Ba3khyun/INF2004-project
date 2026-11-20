@@ -332,6 +332,11 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 			case STATE_READING_BARCODE:
 			{
 				UW current_us = in_w(TIMER_TIMERAWL);
+
+				/* Keep the VC intent fresh (500 ms timeout): the bars
+				   must keep moving under the sensor to be read. */
+				(void)vehicle_controller_line_motion_post(MC_CMD_DRIVE_FORWARD,
+									  right_line || center_line);
 				
 				//Check how long it has been reading the barcode
 				if ((current_us - barcode_start_time) > (BARCODE_TIMEOUT_MS * 1000UL)) {

@@ -64,30 +64,37 @@ vc_output_t vc_core_step(vc_core_t *vc, uint32_t now_ms)
 {
     int stale;
     if (!vc) return VC_OUTPUT_HALT;
-    /* Safety and sensor health dominate all movement intents. */
+    /* Safety and sensor health dominate all movement intents.  Every
+     * halt below also ends a line search, so a later search gets a fresh
+     * VC_LINE_SEARCH_MAX_MS budget. */
     if (vc->safety_latched || vc->safety_request || vc->imu_fault) {
         vc->gap_armed = 0;
+        vc->search_active = 0;
         vc->state = VC_ERROR;
         return VC_OUTPUT_HALT;
     }
     if (vc->mission_complete) {
         vc->gap_armed = 0;
+        vc->search_active = 0;
         vc->state = VC_MISSION_COMPLETE;
         return VC_OUTPUT_HALT;
     }
     if (vc->paused) {
         vc->gap_armed = 0;
+        vc->search_active = 0;
         vc->state = VC_PAUSED;
         return VC_OUTPUT_HALT;
     }
     if (!vc->imu_ready) {
         vc->gap_armed = 0;
+        vc->search_active = 0;
         vc->state = VC_INITIALIZING;
         return VC_OUTPUT_HALT;
     }
     stale = !vc->line_received || (uint32_t)(now_ms - vc->last_line_ms) > VC_LINE_TIMEOUT_MS;
     if (stale || vc->intent == VC_INTENT_STOP || vc->intent == VC_INTENT_NONE) {
         vc->gap_armed = 0;
+        vc->search_active = 0;
         vc->state = VC_LINE_SEARCH;
         return VC_OUTPUT_HALT;
     }
@@ -102,8 +109,28 @@ vc_output_t vc_core_step(vc_core_t *vc, uint32_t now_ms)
         }
         vc->gap_armed = 0;
         vc->state = VC_LINE_SEARCH;
+        /* Bounded line search: execute Buddy 3's (fresh) recovery
+         * steer/pivot intent, then halt once the budget is used up. */
+        if (vc->intent == VC_INTENT_STEER_LEFT ||
+            vc->intent == VC_INTENT_STEER_RIGHT ||
+            vc->intent == VC_INTENT_PIVOT_LEFT ||
+            vc->intent == VC_INTENT_PIVOT_RIGHT) {
+            if (!vc->search_active) {
+                vc->search_active = 1;
+                vc->search_start_ms = now_ms;
+            }
+            if ((uint32_t)(now_ms - vc->search_start_ms) <= VC_LINE_SEARCH_MAX_MS) {
+                switch (vc->intent) {
+                case VC_INTENT_STEER_LEFT:  return VC_OUTPUT_STEER_LEFT;
+                case VC_INTENT_STEER_RIGHT: return VC_OUTPUT_STEER_RIGHT;
+                case VC_INTENT_PIVOT_LEFT:  return VC_OUTPUT_PIVOT_LEFT;
+                default:                    return VC_OUTPUT_PIVOT_RIGHT;
+                }
+            }
+        }
         return VC_OUTPUT_HALT;
     }
+    vc->search_active = 0;      /* line visible again: new budget next time */
     vc->visible_ms = vc->last_line_ms;
     vc->visible_travel_mm = vc->travel_mm;
     vc->gap_armed = vc->intent == VC_INTENT_FORWARD ||
