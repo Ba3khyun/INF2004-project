@@ -104,9 +104,13 @@ typedef struct {
 	UW	err_reason;	// Error reason
 	UW	sdat_num;	// Number of send data
 	UW	rdat_num;	// Number of receive data
+	UW	sdat_len;	// Send length at transaction start
+	UW	rdat_len;	// Receive length at transaction start
+	UB	reg_addr;	// Register address for diagnostic
 	UB	*sbuf;		// Send buffer
 	UB	*rbuf;		// Receive buffer
 	UW abort_source;  /* Diagnostic: I2C transmit-abort reason: ADDED */ 
+	UW busy;
 } T_I2C_LLDCB;
 LOCAL T_I2C_LLDCB	ll_devcb[DEV_I2C_UNITNM];
 
@@ -120,6 +124,50 @@ LOCAL T_SPLOCK ll_lock[DEV_I2C_UNITNM];
 #endif
 
 #define I2C_INT_ERROR	(I2C_INT_TX_ABRT|I2C_INT_TX_OVER|I2C_INT_RX_OVER|I2C_INT_RX_UNDER)
+
+LOCAL void i2c_recover_bus(INT unit)
+{
+	UW sda;
+	UW scl;
+	UW i;
+	UW k;
+
+	if (unit != DEV_I2C_0) {
+		return;
+	}
+
+	sda = DEVCNF_I2C0_SDA_PIN;
+	scl = DEVCNF_I2C0_SCL_PIN;
+
+	out_w(I2C_INTR_MASK(unit), 0);
+	out_w(I2C_ENABLE(unit), I2C_ENABLE_ABORT);
+	for (k = 0U; k < 10000U; k++) {
+		if ((in_w(I2C_ENABLE_STATUS(unit)) & I2C_ENABLE_TX_CMD_BLOCK) == 0U)
+			break;
+	}
+	out_w(I2C_ENABLE(unit), 0);
+	(void)in_w(I2C_CLR_INTR(unit));
+	(void)in_w(I2C_CLR_TX_ABRT(unit));
+
+	out_w(GPIO_CTRL(sda), GPIO_CTRL_FUNCSEL_SIO);
+	out_w(GPIO_CTRL(scl), GPIO_CTRL_FUNCSEL_SIO);
+	out_w(GPIO(sda), GPIO_IE | GPIO_PUE);
+	out_w(GPIO(scl), GPIO_IE | GPIO_PUE);
+	set_w(GPIO_OE_SET, (1UL << scl));
+
+	for (i = 0U; i < 9U; i++) {
+		out_w(GPIO_OUT_CLR, (1UL << scl));
+		for (k = 0U; k < 300U; k++) { }
+		out_w(GPIO_OUT_SET, (1UL << scl));
+		for (k = 0U; k < 300U; k++) { }
+	}
+
+	out_w(GPIO_OE_CLR, (1UL << scl));
+	out_w(GPIO_CTRL(sda), GPIO_CTRL_FUNCSEL_I2C);
+	out_w(GPIO_CTRL(scl), GPIO_CTRL_FUNCSEL_I2C);
+	out_w(GPIO(sda), GPIO_IE | GPIO_DRIVE_4MA | GPIO_PUE | GPIO_SHEMITT);
+	out_w(GPIO(scl), GPIO_IE | GPIO_DRIVE_4MA | GPIO_PUE | GPIO_SHEMITT);
+}
 
 /*-------------------------------------------------------
  * Interrupt handler
@@ -157,23 +205,38 @@ LOCAL void i2c_inthdr( UINT intno )
 	switch ( p_cb->state ) {
 	case I2C_STS_SEND:
 		if(i2c_sts & I2C_INT_TX_EMPTY) {
-			/* IRQ must not do serial logging: impacts 2 ms deadline. */
+			/* IRQ must not do serial logging. */
 			cmd = *(p_cb->sbuf)++ & I2C_DATA_CMD_DAT;
-			if(--(p_cb->sdat_num)) {
-				cmd |= I2C_DATA_CMD_CMD_WRITE;
-			} else {	// Last data
+			if (--(p_cb->sdat_num) == 0U) {
 				clr_w(I2C_INTR_MASK(unit), I2C_INT_TX_EMPTY);
-				if(p_cb->rdat_num) {
-					/* RESTART belongs on the FIRST READ command. */
-					cmd |= I2C_DATA_CMD_CMD_WRITE;
-					p_cb->state = I2C_STS_START;
+				if (p_cb->rdat_num > 0U) {
+					UINT r;
+					p_cb->state = I2C_STS_RECV;
+					set_w(I2C_INTR_MASK(unit),
+						I2C_INT_RX_FULL | I2C_INT_STOP_DET | I2C_INT_ERROR);
+					/* Last register byte is written normally.
+					 * The first read command generates RESTART. */
+					out_w(I2C_DATA_CMD(unit), cmd);
+					for (r = 0U; r < p_cb->rdat_num; r++) {
+						cmd = I2C_DATA_CMD_CMD_READ;
+						if (r == 0U) cmd |= I2C_DATA_CMD_RESTART;
+						if (r + 1U == p_cb->rdat_num)
+							cmd |= I2C_DATA_CMD_STOP;
+						out_w(I2C_DATA_CMD(unit), cmd);
+					}
+					p_cb->rdat_num = p_cb->rdat_len;
 				} else {
 					cmd |= I2C_DATA_CMD_CMD_WRITE | I2C_DATA_CMD_STOP;
 					p_cb->state = I2C_STS_STOP;
+					clr_w(I2C_INTR_MASK(unit), I2C_INT_TX_EMPTY);
+					set_w(I2C_INTR_MASK(unit),
+					     I2C_INT_STOP_DET | I2C_INT_ERROR);
+					out_w(I2C_DATA_CMD(unit), cmd);
 				}
-				wup = TRUE;
+			} else {
+				out_w(I2C_DATA_CMD(unit),
+				     cmd | I2C_DATA_CMD_CMD_WRITE);
 			}
-			out_w(I2C_DATA_CMD(unit), cmd);			
 		} else {	// Error
 			abort = TRUE;	// Error
 		}
@@ -182,18 +245,27 @@ LOCAL void i2c_inthdr( UINT intno )
 		if(i2c_sts & I2C_INT_RX_FULL) {
 			*(p_cb->rbuf)++ = in_w(I2C_DATA_CMD(unit)) & I2C_DATA_CMD_DAT;
 			if(--(p_cb->rdat_num)) {
-				cmd = I2C_DATA_CMD_CMD_READ;
-				if (p_cb->rdat_num == 1U) {
-					cmd |= I2C_DATA_CMD_STOP; /* Last byte in multi-byte read */
-				}
-				out_w(I2C_DATA_CMD(unit), cmd);
 			} else {	// Last data
 				clr_w(I2C_INTR_MASK(unit), I2C_INT_RX_FULL);
-				p_cb->state = I2C_STS_STOP;
-				wup = TRUE;
+				if (i2c_sts & I2C_INT_STOP_DET) {
+					wup = TRUE;
+					p_cb->state = I2C_STS_STOP;
+				} else {
+					p_cb->state = I2C_STS_STOP;
+					set_w(I2C_INTR_MASK(unit),
+					     I2C_INT_STOP_DET | I2C_INT_ERROR);
+				}
 			}
 		} else {
 			abort = TRUE;	// Error
+		}
+		break;
+	case I2C_STS_STOP:
+		if (i2c_sts & I2C_INT_STOP_DET) {
+			clr_w(I2C_INTR_MASK(unit), I2C_INT_STOP_DET);
+			wup = TRUE;
+		} else {
+			abort = TRUE;
 		}
 		break;
 	default:
@@ -277,6 +349,15 @@ LOCAL ER i2c_trans(INT unit, T_I2C_LLDCB *p_cb)
 	p_cb->abort_source = 0;
 	p_cb->err_reason = 0;
 
+	I2C_LOCK(unit, imask);
+	if (p_cb->busy) {
+		I2C_UNLOCK(unit, imask);
+		return E_BUSY;
+	}
+	p_cb->busy = 1U;
+	I2C_UNLOCK(unit, imask);
+	(void)tk_clr_flg(p_cb->done_flgid, 0);
+
 	// ADDED: Clear the abort_source at the start of a transaction
 	/* Mask interrupts and disable the controller first */
 	out_w(I2C_INTR_MASK(unit), 0);
@@ -288,6 +369,9 @@ LOCAL ER i2c_trans(INT unit, T_I2C_LLDCB *p_cb)
 
 		while ((in_w(I2C_ENABLE_STATUS(unit)) & 1U) != 0U) {
 			if (--timeout == 0U) {
+				I2C_LOCK(unit, imask);
+				p_cb->busy = 0U;
+				I2C_UNLOCK(unit, imask);
 				return E_IO;
 			}
 		}
@@ -328,23 +412,20 @@ LOCAL ER i2c_trans(INT unit, T_I2C_LLDCB *p_cb)
 		
 		//CHANGED: 
 		} else {    /* Receive */
-			if (p_cb->rdat_num > 1U) {
-				cmd = I2C_DATA_CMD_CMD_READ;
-			} else {
-				cmd = I2C_DATA_CMD_CMD_READ | I2C_DATA_CMD_STOP;
-			}
-
-			if (p_cb->sbuf != NULL) {
-				cmd |= I2C_DATA_CMD_RESTART;
-			}
-
 			/* Set state BEFORE enabling interrupts or issuing commands. */
 			p_cb->state = I2C_STS_RECV;
 
 			set_w(I2C_INTR_MASK(unit),
 				I2C_INT_RX_FULL | I2C_INT_ERROR);
 
-			out_w(I2C_DATA_CMD(unit), cmd);
+			for (UW r = 0U; r < p_cb->rdat_num; r++) {
+				cmd = I2C_DATA_CMD_CMD_READ;
+				if (r == 0U && p_cb->sbuf != NULL)
+					cmd |= I2C_DATA_CMD_RESTART;
+				if (r + 1U == p_cb->rdat_num)
+					cmd |= I2C_DATA_CMD_STOP;
+				out_w(I2C_DATA_CMD(unit), cmd);
+			}
 		}
 		// ^^^
 		I2C_UNLOCK(unit, imask);
@@ -414,11 +495,45 @@ LOCAL ER i2c_trans(INT unit, T_I2C_LLDCB *p_cb)
 	if ((err < E_OK) && (unit == DEV_I2C_0) &&
 	    ((p_cb->sadr == 0x18U) || (p_cb->sadr == 0x19U) ||
 	     (p_cb->sadr == 0x1DU) || (p_cb->sadr == 0x1EU))) {
-		tm_printf((UB*)"I2C0 addr=0x%02X err=%d ABORT=0x%08X intr=0x%08X\n",
-		          (UINT)p_cb->sadr, err, p_cb->abort_source, p_cb->err_reason);
+		UW pins = in_w(GPIO_IN);
+		UW sda = DEVCNF_I2C0_SDA_PIN;
+		UW scl = DEVCNF_I2C0_SCL_PIN;
+		UB reg = p_cb->reg_addr;
+		const char *op = "register-read";
+		if (p_cb->rdat_len == 0U) {
+			op = "register-write";
+		} else if (p_cb->rdat_len == 1U && reg == 0x0FU) {
+			op = "WHO_AM_I";
+		} else if (p_cb->rdat_len == 6U && reg == 0xA8U) {
+			op = "accelerometer-burst";
+		} else if (p_cb->rdat_len == 6U && reg == 0x88U) {
+			op = "magnetometer-burst";
+		}
+		tm_printf((UB*)"I2C0 op=%s addr=0x%02X reg=0x%02X snd=%lu rcv=%lu "
+		          "err=%d ABORT=0x%08X intr=0x%08X status=0x%08X "
+		          "SDA%d=%lu SCL%d=%lu repeated-start=%u\n",
+		          op, (UINT)p_cb->sadr, (UINT)reg,
+		          (unsigned long)p_cb->sdat_len, (unsigned long)p_cb->rdat_len,
+		          err, p_cb->abort_source, p_cb->err_reason,
+		          (UINT)in_w(I2C_STATUS(unit)),
+		          (UINT)sda, (unsigned long)((pins >> sda) & 1U),
+		          (UINT)scl, (unsigned long)((pins >> scl) & 1U),
+		          (p_cb->sdat_len > 0U && p_cb->rdat_len > 0U) ? 1U : 0U);
+	}
+
+	if (err < E_OK) {
+		UW pins = in_w(GPIO_IN);
+		UW sda = DEVCNF_I2C0_SDA_PIN;
+		UW scl = DEVCNF_I2C0_SCL_PIN;
+		if (((pins >> sda) & 1U) == 0U || ((pins >> scl) & 1U) == 0U) {
+			i2c_recover_bus(unit);
+		}
 	}
 
 	out_w(I2C_ENABLE(unit), 0);				// Disable I2C
+	I2C_LOCK(unit, imask);
+	p_cb->busy = 0U;
+	I2C_UNLOCK(unit, imask);
 
 	return err;
 }
@@ -432,8 +547,11 @@ Inline void set_com_start(UW unit, UW sadr, UW sdat_num, UW rdat_num, UB *sbuf, 
 	ll_devcb[unit].sadr	= sadr;		/* Slave address */
 	ll_devcb[unit].sdat_num	= sdat_num;	/* Number of send data */
 	ll_devcb[unit].rdat_num	= rdat_num;	/* Number of receive data */
+	ll_devcb[unit].sdat_len	= sdat_num;
+	ll_devcb[unit].rdat_len	= rdat_num;
 	ll_devcb[unit].sbuf	= sbuf;		/* Send buffer */
 	ll_devcb[unit].rbuf	= rbuf;		/* Receive buffer */
+	ll_devcb[unit].reg_addr	= (sdat_num > 0U && sbuf != NULL) ? sbuf[0] : 0U;
 	ll_devcb[unit].abort_source = 0; // ADDED: clear abort_source at the start of a transaction
 }
 
@@ -455,16 +573,18 @@ EXPORT W dev_i2c_llctl( UW unit, INT cmd, UW p1, UW p2, UW *pp)
 
 		out_w(I2C_CON(unit), I2C_CON_SLAVE_DISABLE | I2C_CON_MASTER_MODE	// Master Mode
 			| I2C_CON_RESTART_EN | I2C_CON_TX_EMPTY_CTRL
-			| I2C_CON_7BIT_ADR | I2C_CON_SPEED_FAST);			// 7bit Address & Fast Speed
+			| I2C_CON_7BIT_ADR | I2C_CON_SPEED_STANDARD);		// 7bit Address & 100 kHz
 
 		out_w(I2C_RX_TL(unit), 0);
 		out_w(I2C_TX_TL(unit), 0);
 		out_w(I2C_DMA_CR(unit), I2C_DMA_CR_RDMAE | I2C_DMA_CR_TDMAE);
 
-		/* Set Baudrate (400Kbts)*/
-		out_w(I2C_FS_SCL_HCNT(unit), 126);
-		out_w(I2C_FS_SCL_LCNT(unit), 187);
-		out_w(I2C_FS_SPKLEN(unit), 187/16);
+		/* Standard-mode timing.  These are conservative at the RP2040
+		   125 MHz peripheral clock and avoid 400 kHz signal integrity
+		   problems on long or breadboard wiring. */
+		out_w(I2C_SS_SCL_HCNT(unit), 600);
+		out_w(I2C_SS_SCL_LCNT(unit), 600);
+		out_w(I2C_FS_SPKLEN(unit), 1);
 		out_w(I2C_SDA_HOLD(unit), 38);
 
 		/* I2C interrupt enable */
