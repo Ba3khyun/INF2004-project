@@ -37,9 +37,15 @@
 #define FORWARD_REVOLUTIONS 0.50f
 #define TURN_REVOLUTIONS 0.25f
 
+/* Per-wheel duty (%).  Logs showed encoder timeouts only in states that
+ * drive a wheel below MOVE_PWM: the inner wheel of an arc at 12 % never
+ * turned (0 pulses) and pivots at 15 % barely moved, while straight drive
+ * at 20 % never timed out.  Both were raised toward the duty known to move
+ * the car.  These are a starting point: if a wheel still starves in an arc
+ * or pivot, raise them further.  Original values: TURN 15, INNER 12. */
 #define MOVE_PWM 20.0f
-#define TURN_PWM 15.0f
-#define STEER_RIGHT_INNER_PWM 12.0f
+#define TURN_PWM 20.0f
+#define STEER_RIGHT_INNER_PWM 16.0f
 
 /* SAFETY GATE: speed requests are computed, stored and validated, but DO NOT
  * alter motor PWM while live ESTOP and command arbitration are unverified.
@@ -511,11 +517,31 @@ LOCAL void update_motion(UW now)
 	}
 
 	/* Stop when a moving wheel loses encoder pulses. */
-	if ((!left_done && now - last_left_pulse >= ENCODER_TIMEOUT_MS) ||
-		(!right_done && now - last_right_pulse >= ENCODER_TIMEOUT_MS))
 	{
-		emergency_stop("Encoder timeout", TRUE);
-		return;
+		UW left_age = now - last_left_pulse;
+		UW right_age = now - last_right_pulse;
+		BOOL left_to = (!left_done && left_age >= ENCODER_TIMEOUT_MS);
+		BOOL right_to = (!right_done && right_age >= ENCODER_TIMEOUT_MS);
+
+		if (left_to || right_to)
+		{
+			/* Diagnostic printed once at the fault, so it does not slow the
+			 * 10 ms loop in the normal case.  Captures which wheel starved,
+			 * the pulse counts and ages, how long the move had run, the
+			 * motion state and the commanded PWM, so a startup/low-PWM
+			 * stall can be told apart from a wiring/power loss.  The fault
+			 * still latches below; this does not change behaviour. */
+			tm_printf((UB *)"[B2-ENC] TIMEOUT state=%d left_to=%d right_to=%d "
+				  "Lpulses=%u Lage=%u Rpulses=%u Rage=%u "
+				  "elapsed=%u timeout=%u target_rev=%d/1000\n",
+				  (INT)motion_state, (INT)left_to, (INT)right_to,
+				  left_pulses, left_age, right_pulses, right_age,
+				  (UW)(now - start_time), (UW)ENCODER_TIMEOUT_MS,
+				  milli_rev(target_revolutions));
+
+			emergency_stop("Encoder timeout", TRUE);
+			return;
+		}
 	}
 
 	previous_left = current_left;
@@ -730,5 +756,20 @@ EXPORT void motion_task(INT stacd, void *exinf)
 		update_motion(now);
 		post_speed(now);
 		motion_tick_count++;
+
+		/* Encoder diagnostic: print raw L/R counts once a second so a
+		 * hand-spun wheel can be checked for pulses on GP6/GP7.  If these
+		 * stay at 0 while a wheel turns, the encoder signal is not reaching
+		 * the Pico (power/alignment/wiring), which is what trips the
+		 * "Encoder timeout" fault.  Remove when done. */
+		{
+			static UW enc_dbg_last = 0u;
+			if (now - enc_dbg_last >= 1000u) {
+				tm_printf((UB *)"[ENC] left=%u right=%u\r\n",
+					  encoder_get_left_count(),
+					  encoder_get_right_count());
+				enc_dbg_last = now;
+			}
+		}
 	}
 }

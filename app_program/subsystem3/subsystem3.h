@@ -12,15 +12,23 @@
 #define S3_BATCH_SIZE       5   /* report to subsystem 4 every N samples[cite: 2] */
 
 #define THRESHOLD           1500  // Adjusted line-tracking threshold
-#define BARCODE_PIN         28    // GP28 digital barcode sensor
+#define BARCODE_PIN         28    // GP28 barcode sensor analog output (AO)
 #define BARCODE_TIMEOUT_MS  10000  // 10 seconds overall scan timeout
 #define QUIET_ZONE_TIMEOUT_MS 3000  // 3s continuous white confirms end of barcode
 #define BARCODE_BAR_COUNT   15    // Black bars in each A-D barcode
 #define BARCODE_MIN_BAR_WIDTH_US 100
 #define BARCODE_EDGE_DEBOUNCE_US 500
 
+/* Barcode now reads the sensor's ANALOG output on ADC channel 2 (GP28),
+ * not a digital edge.  Black/white is decided adaptively from the learned
+ * white (low) and black (high) levels, so it tolerates contrast drift that
+ * a fixed threshold could not.  Hysteresis is a percent of the learned span;
+ * the minimum contrast stops noise over plain white from flipping levels. */
 #define ADC_CHANNEL_RIGHT   0     // GP26 (sensor mounted right of center)
 #define ADC_CHANNEL_CENTER  1     // GP27 (IR_LINE_C_ADC)
+#define ADC_CHANNEL_BARCODE 2     // GP28 barcode sensor AO
+#define BARCODE_HYST_PCT    10u   // +/- % of the learned white..black span
+#define BARCODE_MIN_CONTRAST 250u // ADC counts black must exceed white
 
 typedef enum {
     STATE_FOLLOWING_LINE,

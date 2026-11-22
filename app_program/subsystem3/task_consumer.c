@@ -14,103 +14,165 @@
 #define RIGHT_LINE_LOSS_ARC_MS 150u
 #define LINE_THRESHOLD_HYSTERESIS 100u
 
-/* The encoder-core ISR publishes timestamped edges. The consumer owns
- * the partial scan, including reset and decoding, on its own core. */
-#define EDGE_QUEUE_SIZE 128u
+/* Barcode is sampled from the ADC (channel 2 / GP28 AO) in the consumer
+ * loop.  Each analog sample is turned into a black/white level using an
+ * adaptive midpoint between the learned white and black extremes, and a
+ * level change is treated as an edge, timed from the hardware microsecond
+ * timer, then fed into the same width-capture and decode path as before. */
 typedef struct {
 	UW us;
 	bool high;
 } barcode_edge_t;
 
-static barcode_edge_t edges[EDGE_QUEUE_SIZE];
-static UW edge_head, edge_tail, dropped_edges;
 static UW high_bar_widths[BARCODE_BAR_COUNT], low_bar_widths[BARCODE_BAR_COUNT];
 static UW high_bar_count, low_bar_count, last_edge_time, first_edge_time;
 static bool scanning, barcode_level_high;
 
-static void barcode_gpio_isr(UINT gpio, UINT events)
-{
-	UW head = __atomic_load_n(&edge_head, __ATOMIC_RELAXED);
-	UW tail = __atomic_load_n(&edge_tail, __ATOMIC_ACQUIRE);
-	(void)events; /* The shared IRQ dispatches only this pin's edges. */
-	if (head - tail >= EDGE_QUEUE_SIZE) {
-		UW lost = __atomic_load_n(&dropped_edges, __ATOMIC_RELAXED);
-		__atomic_store_n(&dropped_edges, lost + 1u, __ATOMIC_RELEASE);
-		return;
-	}
-	edges[head % EDGE_QUEUE_SIZE] = (barcode_edge_t){
-		in_w(TIMER_TIMERAWL), gpio_get_val(gpio) != 0u
-	};
-	__atomic_store_n(&edge_head, head + 1u, __ATOMIC_RELEASE);
-}
+/* Adaptive black/white decision for the analog barcode signal.
+ * BAR_IS_HIGH: a black bar reads HIGHER than the white floor, so
+ * barcode_black_level tracks the maximum and barcode_white_level the min. */
+static bool barcode_level_init;
+static UW barcode_white_level;
+static UW barcode_black_level;
 
-static char decode_barcode(const UW *bar_widths, UW *pattern_out)
+/* Decoded barcode character waiting to be turned into a motion command.
+ * finish_barcode() runs inside the edge-processing path, so it only records
+ * the result here; the task loop consumes it and posts the command through
+ * the vehicle controller (keeping safety/obstacle arbitration in the loop).
+ * 0 = nothing pending. */
+static volatile char barcode_pending_cmd = 0;
+
+/*
+ * Full Code 39 decoder (A-Z, 0-9 and the standard symbols).
+ *
+ * A Code 39 character is nine elements, five bars and four spaces, read
+ * bar,space,bar,space,bar,space,bar,space,bar.  Exactly three of the nine
+ * are wide ("3 of 9").  The table below holds each character's 9-bit
+ * pattern, MSB = first element, 1 = wide, 0 = narrow.  '*' (0x094) frames
+ * the data as the start and stop character.
+ *
+ * A scanned "*X*" barcode is 15 bars + 14 spaces = 29 strictly alternating
+ * elements, starting and ending on a bar.  They arrive here as two arrays:
+ *   high_bar_widths[0..14]  (the black bars)
+ *   low_bar_widths[0..13]   (the white spaces)
+ * interleaved as high[0], low[0], high[1], low[1], ... high[14].
+ * Three 9-element groups (offsets 0, 10, 20) with a 1-element inter-character
+ * gap between them form "* data *".
+ */
+typedef struct { char ch; UW pat; } code39_entry_t;
+static const code39_entry_t code39_table[] = {
+	{'0',0x034},{'1',0x121},{'2',0x061},{'3',0x160},{'4',0x031},
+	{'5',0x130},{'6',0x070},{'7',0x025},{'8',0x124},{'9',0x064},
+	{'A',0x109},{'B',0x049},{'C',0x148},{'D',0x019},{'E',0x118},
+	{'F',0x058},{'G',0x00D},{'H',0x10C},{'I',0x04C},{'J',0x01C},
+	{'K',0x103},{'L',0x043},{'M',0x142},{'N',0x013},{'O',0x112},
+	{'P',0x052},{'Q',0x007},{'R',0x106},{'S',0x046},{'T',0x016},
+	{'U',0x181},{'V',0x0C1},{'W',0x1C0},{'X',0x091},{'Y',0x190},
+	{'Z',0x0D0},{'-',0x085},{'.',0x184},{' ',0x0C4},{'$',0x0A8},
+	{'/',0x0A2},{'+',0x08A},{'%',0x02A},{'*',0x094}
+};
+
+/* Classify nine elements (starting at `elements[offset]`) into a 9-bit
+ * narrow/wide pattern, then look it up.  `wide_threshold` is shared across
+ * the whole barcode so one narrow/wide boundary is used throughout. */
+static char code39_lookup(const UW *elements, UW offset, UW wide_threshold)
 {
-	static const UW pattern_a = 0x1A26u; //NNWWNWNNNWNNWWN
-	static const UW pattern_b = 0x1926u; //NNWWNNWNNWNNWWN
-	static const UW pattern_c = 0x1B06u; //NNWWNWWNNNNNWWN
-	static const UW pattern_d = 0x18A6u; //NNWWNNNWNWNNWWN
-	UW sorted_widths[BARCODE_BAR_COUNT];
-	UW narrow_total = 0u;
-	UW narrow_average;
-	UW wide_threshold;
 	UW pattern = 0u;
-	UW reversed_pattern = 0u;
+	UW wide_count = 0u;
 	UW i;
 
-	for (i = 0u; i < BARCODE_BAR_COUNT; ++i) {
-		UW width = bar_widths[i];
-		UW j = i;
-
-		while (j > 0u && sorted_widths[j - 1u] > width) {
-			sorted_widths[j] = sorted_widths[j - 1u];
-			--j;
-		}
-		sorted_widths[j] = width;
-	}
-
-	/* These templates each contain nine narrow and six wide bars. */
 	for (i = 0u; i < 9u; ++i) {
-		narrow_total += sorted_widths[i];
+		pattern <<= 1;
+		if (elements[offset + i] >= wide_threshold) {
+			pattern |= 1u;
+			++wide_count;
+		}
 	}
-	narrow_average = narrow_total / 9u;
-	if (narrow_average == 0u) {
-		*pattern_out = 0u;
+	if (wide_count != 3u) {     /* every valid Code 39 char has 3 wide */
 		return '?';
 	}
-	wide_threshold = narrow_average * 2u;
-
-	for (i = 0u; i < BARCODE_BAR_COUNT; ++i) {
-		pattern <<= 1;
-		if (bar_widths[i] >= wide_threshold) {
-			pattern |= 1u;
+	for (i = 0u; i < sizeof(code39_table) / sizeof(code39_table[0]); ++i) {
+		if (code39_table[i].pat == pattern) {
+			return code39_table[i].ch;
 		}
 	}
-	*pattern_out = pattern;
+	return '?';
+}
 
+/* Decode one "*X*" scan into its middle character.  Returns '?' on failure.
+ * bar_widths = 15 black bars, space_widths = 14 white spaces. */
+static char decode_barcode(const UW *bar_widths, const UW *space_widths)
+{
+	UW elements[29];
+	UW sorted[29];
+	UW i, j;
+	UW narrow_total = 0u;
+	UW narrow_avg;
+	UW wide_threshold;
+	char start_c, data_c, stop_c;
+
+	/* Interleave bars and spaces into the real scan order (29 elements). */
 	for (i = 0u; i < BARCODE_BAR_COUNT; ++i) {
-		reversed_pattern = (reversed_pattern << 1) | (pattern & 1u);
-		pattern >>= 1;
+		elements[2u * i] = bar_widths[i];              /* bar  */
+		if (i < BARCODE_BAR_COUNT - 1u) {
+			elements[2u * i + 1u] = space_widths[i];   /* space */
+		}
 	}
-	if (*pattern_out == pattern_a || reversed_pattern == pattern_a) return 'A';
-	if (*pattern_out == pattern_b || reversed_pattern == pattern_b) return 'B';
-	if (*pattern_out == pattern_c || reversed_pattern == pattern_c) return 'C';
-	if (*pattern_out == pattern_d || reversed_pattern == pattern_d) return 'D';
+
+	/* Narrow reference: of 29 elements, Code 39 "*X*" has more narrow than
+	 * wide, so average the narrowest ~17 and set the wide cutoff at 1.5x. */
+	for (i = 0u; i < 29u; ++i) {
+		UW w = elements[i];
+		j = i;
+		while (j > 0u && sorted[j - 1u] > w) { sorted[j] = sorted[j - 1u]; --j; }
+		sorted[j] = w;
+	}
+	for (i = 0u; i < 17u; ++i) {
+		narrow_total += sorted[i];
+	}
+	narrow_avg = narrow_total / 17u;
+	if (narrow_avg == 0u) {
+		return '?';
+	}
+	wide_threshold = narrow_avg + narrow_avg / 2u;   /* 1.5 x narrow */
+
+	/* Groups: [0..8]=start, [9]=gap, [10..18]=data, [19]=gap, [20..28]=stop. */
+	start_c = code39_lookup(elements, 0u, wide_threshold);
+	data_c  = code39_lookup(elements, 10u, wide_threshold);
+	stop_c  = code39_lookup(elements, 20u, wide_threshold);
+
+	if (start_c == '*' && stop_c == '*' && data_c != '?' && data_c != '*') {
+		return data_c;
+	}
 	return '?';
 }
 
 static void finish_barcode(void)
 {
-	UW pattern;
 	char decoded = '?';
-	if (!barcode_level_high && high_bar_count == BARCODE_BAR_COUNT)
-		decoded = decode_barcode(high_bar_widths, &pattern);
-	if (barcode_level_high && low_bar_count == BARCODE_BAR_COUNT)
-		decoded = decode_barcode(low_bar_widths, &pattern);
-	if (decoded != '?')
+	/* A complete "*X*" scan is 15 black bars and 14 white spaces. */
+	if (high_bar_count == BARCODE_BAR_COUNT &&
+	    low_bar_count == BARCODE_BAR_COUNT - 1u) {
+		decoded = decode_barcode(high_bar_widths, low_bar_widths);
+		if (decoded == '?') {
+			/* Try the reverse scan direction. */
+			UW rbar[BARCODE_BAR_COUNT];
+			UW rspace[BARCODE_BAR_COUNT - 1u];
+			UW k;
+			for (k = 0u; k < BARCODE_BAR_COUNT; ++k)
+				rbar[k] = high_bar_widths[BARCODE_BAR_COUNT - 1u - k];
+			for (k = 0u; k < BARCODE_BAR_COUNT - 1u; ++k)
+				rspace[k] = low_bar_widths[BARCODE_BAR_COUNT - 2u - k];
+			decoded = decode_barcode(rbar, rspace);
+		}
+	}
+	if (decoded != '?') {
 		tm_printf((UB*)"-> Decoded Character: %c\r\n", decoded);
-	else if (high_bar_count >= BARCODE_BAR_COUNT || low_bar_count >= BARCODE_BAR_COUNT)
+		/* Hand the character to the task loop; only A-D will move the car. */
+		barcode_pending_cmd = decoded;
+	} else if (high_bar_count >= BARCODE_BAR_COUNT || low_bar_count >= BARCODE_BAR_COUNT) {
 		tm_printf((UB*)"Unknown barcode pattern.\r\n");
+	}
 	scanning = false;
 }
 
@@ -144,27 +206,49 @@ static void consume_barcode_edge(barcode_edge_t edge)
 	barcode_level_high = edge.high;
 }
 
-static void poll_barcode(void)
+static void poll_barcode(UW adc_value)
 {
-	static UW previous_drops;
-	UW tail = __atomic_load_n(&edge_tail, __ATOMIC_RELAXED);
 	UW now = in_w(TIMER_TIMERAWL);
-	UW head = __atomic_load_n(&edge_head, __ATOMIC_ACQUIRE);
-	UW drops = __atomic_load_n(&dropped_edges, __ATOMIC_ACQUIRE);
-	if (drops != previous_drops) {
-		previous_drops = drops;
-		scanning = false;
-		__atomic_store_n(&edge_tail, head, __ATOMIC_RELEASE);
-		return;
-	}
-	if (tail == head) {
+	UW span, midpoint, deadband;
+	bool next_level;
+
+	/* First sample: assume the sensor sits over white, seed both levels. */
+	if (!barcode_level_init) {
+		barcode_white_level = adc_value;
+		barcode_black_level = adc_value;
+		barcode_level_high = false;
+		barcode_level_init = true;
 		barcode_tick(now);
 		return;
 	}
-	while (tail != head) {
-		barcode_edge_t edge = edges[tail % EDGE_QUEUE_SIZE];
-		__atomic_store_n(&edge_tail, ++tail, __ATOMIC_RELEASE);
+
+	/* Learn the extremes so the decision adapts to contrast/height. */
+	if (adc_value < barcode_white_level) {
+		barcode_white_level = adc_value;
+	}
+	if (adc_value > barcode_black_level) {
+		barcode_black_level = adc_value;
+	}
+
+	/* Not enough contrast yet (over plain white): hold the level. */
+	span = barcode_black_level - barcode_white_level;
+	if (span < BARCODE_MIN_CONTRAST) {
+		barcode_tick(now);
+		return;
+	}
+
+	midpoint = barcode_white_level + span / 2u;
+	deadband = (span * BARCODE_HYST_PCT) / 100u;
+
+	next_level = barcode_level_high
+		? (adc_value > midpoint - deadband)   /* stay black unless clearly below */
+		: (adc_value >= midpoint + deadband); /* go black only if clearly above */
+
+	if (next_level != barcode_level_high) {
+		barcode_edge_t edge = { now, next_level };
 		consume_barcode_edge(edge);
+	} else {
+		barcode_tick(now);
 	}
 }
 
@@ -185,7 +269,6 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 	UB      text[S4_SUMMARY_MAX];
 	INT     len;
 	UW      count;
-	UW      irq_wait;
 	ER      er;
 
 	(void)stacd; (void)exinf;
@@ -212,18 +295,12 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 	bool right_line_correction_active = false;
 	bool right_line = false;
 	bool center_line = false;
-	for (irq_wait = 0u; irq_wait < 100u; ++irq_wait) {
-		er = motion_gpio_irq_register(BARCODE_PIN, barcode_gpio_isr);
-		if (er != E_BUSY) {
-			break;
-		}
-		tk_dly_tsk(1);
-	}
-	if (er != E_OK) {
-		tm_printf((UB*)"[S3] Failed to register barcode GPIO interrupt: %d\r\n", er);
-		(void)tk_cls_dev(adc_device, 0);
-		return;
-	}
+	/* While non-zero, a barcode turn is executing: hold off line-follow
+	 * steering until this deadline (ms) so the turn is not immediately
+	 * overwritten by the per-cycle line intent. */
+	UW barcode_turn_until = 0u;
+	#define BARCODE_TURN_MS 700u
+	/* Barcode is now sampled via ADC channel 2 in the loop; no GPIO IRQ. */
 
 	while (1) {
 		/* --- PART A: Non-blocking check for background telemetry/statistics samples --- */
@@ -254,9 +331,13 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 		/* --- PART B: IR Line Tracking, Barcode Reading, & Subsystem 2 Motor Control --- */
 		UW right;
 		UW center;
+		UW barcode_adc = 0u;
 		er = read_adc(adc_device, ADC_CHANNEL_RIGHT, &right);
 		if (er == E_OK) {
 			er = read_adc(adc_device, ADC_CHANNEL_CENTER, &center);
+		}
+		if (er == E_OK) {
+			er = read_adc(adc_device, ADC_CHANNEL_BARCODE, &barcode_adc);
 		}
 		if (er != E_OK) {
 			tm_printf((UB*)"[S3] ADC read failed: %d\r\n", er);
@@ -280,19 +361,68 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 			(center > THRESHOLD + LINE_THRESHOLD_HYSTERESIS);
 		
 #if APP_DEBUG_S3_SENSOR
-		int barcode_val_print = gpio_get_val(BARCODE_PIN) != 0 ? 1 : 0;
-
 		/* Periodic raw ADC/barcode readout: optional during integration. */
 		if ((UW)(now - last_debug_print) >= 1000) {
-			tm_printf((UB*)"RAW -> R: %4u [%s] | C: %4u [%s] | Barcode (GP28): %d | Threshold: %d\r\n",
+			UW bspan = (barcode_black_level >= barcode_white_level)
+				? (barcode_black_level - barcode_white_level) : 0u;
+			tm_printf((UB*)"RAW -> R: %4u [%s] | C: %4u [%s] | Barcode ADC2: %4u white=%u black=%u span=%u\r\n",
 				      right, right_line ? "BLACK" : "WHITE",
 				      center, center_line ? "BLACK" : "WHITE",
-				      barcode_val_print, THRESHOLD);
+				      barcode_adc, barcode_white_level, barcode_black_level, bspan);
 			last_debug_print = now;
 		}
 #endif
 
-		poll_barcode();
+		poll_barcode(barcode_adc);
+
+		/* Act on a freshly decoded barcode.  Any character is printed by
+		 * finish_barcode(); only A-D map to a movement instruction, posted
+		 * through the vehicle controller so safety/obstacle arbitration
+		 * still applies.  A = turn left, B = turn right, C = straight,
+		 * D = U-turn (two left pivots).  Other letters are ignored here. */
+		{
+			char bc = barcode_pending_cmd;
+			if (bc != 0) {
+				barcode_pending_cmd = 0;
+				switch (bc) {
+				case 'A':
+					tm_printf((UB*)"[S3] Barcode A -> turn LEFT\r\n");
+					(void)vehicle_controller_line_motion_post(MC_CMD_DRIVE_LEFT, FALSE);
+					barcode_turn_until = now + BARCODE_TURN_MS;
+					break;
+				case 'B':
+					tm_printf((UB*)"[S3] Barcode B -> turn RIGHT\r\n");
+					(void)vehicle_controller_line_motion_post(MC_CMD_DRIVE_RIGHT, FALSE);
+					barcode_turn_until = now + BARCODE_TURN_MS;
+					break;
+				case 'C':
+					tm_printf((UB*)"[S3] Barcode C -> go STRAIGHT\r\n");
+					(void)vehicle_controller_line_motion_post(MC_CMD_DRIVE_FORWARD, FALSE);
+					/* Straight: no hold needed, line following continues. */
+					break;
+				case 'D':
+					tm_printf((UB*)"[S3] Barcode D -> U-TURN\r\n");
+					/* U-turn = a longer left pivot; line following reacquires
+					 * the line afterwards. */
+					(void)vehicle_controller_line_motion_post(MC_CMD_DRIVE_LEFT, FALSE);
+					barcode_turn_until = now + 2u * BARCODE_TURN_MS;
+					break;
+				default:
+					/* A-Z decoded and printed, but no movement for E-Z. */
+					break;
+				}
+			}
+		}
+
+		/* While a barcode turn is executing, hold the turn and skip the
+		 * line-follow steering so it is not overwritten each cycle. */
+		if (barcode_turn_until != 0u) {
+			if ((INT)(now - barcode_turn_until) < 0) {
+				goto barcode_turn_hold;
+			}
+			barcode_turn_until = 0u;
+			last_line_motion_command = 0;   /* force fresh line intent */
+		}
 
 		/* Resume steering on the same sample that reacquires the line. */
 		if (current_state == STATE_LOST_LINE && (right_line || center_line))
@@ -386,6 +516,8 @@ EXPORT void consumer_task(INT stacd, void *exinf)
 		if (current_state == STATE_LOST_LINE && last_line_motion_command != 0u) {
 			(void)vehicle_controller_line_motion_post(last_line_motion_command, right_line || center_line);
 		}
+
+	barcode_turn_hold:
 		tk_dly_tsk(1);
 	}
 }

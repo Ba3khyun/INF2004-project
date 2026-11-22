@@ -27,7 +27,7 @@ sys.path.insert(0, str(TOOLS))
 from wifi_telemetry_tool import decode_telem  # noqa: E402
 
 
-HOST = os.getenv("MQTT_HOST", "172.20.10.2")
+HOST = os.getenv("MQTT_HOST", "172.20.10.3")
 PORT = int(os.getenv("MQTT_PORT", "1884"))
 TOPIC = os.getenv("MQTT_TOPIC", "robot/is06/state")
 HTTP_HOST = os.getenv("DASHBOARD_HOST", "127.0.0.1")
