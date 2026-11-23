@@ -304,26 +304,6 @@ static void handle_calibration(const float f[3])
     tm_printf((UB*)"IMU: calibration rejected (%s), attempt %u of %u\n",
               (r == IMU_CAL_UNSTEADY) ? "car moved" : "|a| not 1 g",
               (UINT)g.cal_attempts, (UINT)S4_CAL_MAX_ATTEMPTS);
-    {
-        /* Diagnostic, printed only on a rejection (at most a few times per
-         * calibration), so it does not touch the 10 ms sample path.  Shows
-         * what the accelerometer actually measured: all axes near 0 means
-         * the reads are returning no data, one large axis or a wrong total
-         * points at range/scale or mounting, a healthy ~1000 mg total means
-         * the limits rather than the sensor are at fault. */
-        float mean[3];
-        float nf = (float)g.cal.n;
-        mean[0] = g.cal.sum[0] / nf;
-        mean[1] = g.cal.sum[1] / nf;
-        mean[2] = g.cal.sum[2] / nf;
-        tm_printf((UB*)"IMU: cal n=%u mean_mg x=%d y=%d z=%d |a|=%d mg (limits %d..%d)\n",
-                  (UINT)g.cal.n,
-                  (INT)(mean[0] * 1000.0f), (INT)(mean[1] * 1000.0f),
-                  (INT)(mean[2] * 1000.0f),
-                  (INT)(imu_vec_magnitude(mean) * 1000.0f),
-                  (INT)(IMU_CAL_GRAVITY_MIN_G * 1000.0f),
-                  (INT)(IMU_CAL_GRAVITY_MAX_G * 1000.0f));
-    }
     if (g.cal_attempts >= S4_CAL_MAX_ATTEMPTS) {
         /* Calibration failure has no dedicated bit in the team mask. */
         enter_fault(0U);

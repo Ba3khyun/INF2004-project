@@ -26,12 +26,7 @@
 #define IMU_SHOCK_CRITICAL_G      2.5f   /* retained for classification; NOT a demo-end trigger */
 #define IMU_HUMP_ENTRY_DEG        5.0f   /* pitch above this starts a hump              */
 #define IMU_HUMP_EXIT_DEG         2.0f   /* |pitch| below this counts as flat           */
-/* Require a sustained tilt (80 ms at 100 Hz) before declaring a hump start.
- * Raised from 3 to 8: short pitch spikes from a noisy IMU/I2C bus were
- * triggering false HUMP_START events that put the vehicle controller into
- * HUMP_CROSSING and interrupted line following. A real hump holds the tilt
- * well past 80 ms, so this rejects noise without missing genuine humps. */
-#define IMU_HUMP_ENTRY_SAMPLES    8U
+#define IMU_HUMP_ENTRY_SAMPLES    3U
 #define IMU_HUMP_EXIT_SAMPLES     3U
 #define IMU_HUMP_TIMEOUT_SAMPLES  2000U   /* 20 s at 100 Hz                               */
 #define IMU_HUMP_RETURN_FRAC      0.2f   /* height must fall back below 20 % of peak    */

@@ -53,39 +53,6 @@ EXPORT ER imu_drv_read_reg(UW addr, UW reg, UB *value)
 }
 EXPORT UW imu_drv_error_count(void) { return g_err_count; }
 EXPORT imu_variant_t imu_drv_variant(void) { return g_variant; }
-
-/* Bounded per-read retry for the 100 Hz sample path.
- *
- * A single transient address-NACK (seen under motor switching noise) would
- * otherwise consume one of the three S4_I2C_FAIL_LIMIT slots that trip the
- * IMU fault.  One bounded retry, with a short bounded delay, absorbs a lone
- * glitch WITHOUT hiding a persistent failure: if the retry also fails the
- * error is returned unchanged, the caller still counts the cycle as failed,
- * and three failed cycles in a row still latch FLT_IMU_I2C.  Retry count and
- * total added time are both bounded (HOT_TRIES-1 extra reads of HOT_RETRY_MS).
- */
-#define HOT_TRIES      2U    /* total attempts: 1 + 1 bounded retry */
-#define HOT_RETRY_MS   2U    /* bounded delay between attempts (ms)  */
-
-static ER xfer_read_retry(UW addr, UB reg, UB *out, SZ n)
-{
-    ER er = E_SYS;
-    UW t;
-    for (t = 0U; t < HOT_TRIES; t++) {
-        er = xfer_read(addr, reg, out, n);
-        if (er == E_OK) {
-            return E_OK;
-        }
-        /* The driver has already disabled the controller and, if a line
-         * was stuck, bit-banged the bus back to idle, so a brief wait and
-         * a fresh transaction is safe.  Do not loop unbounded. */
-        if (t + 1U < HOT_TRIES) {
-            tk_dly_tsk(HOT_RETRY_MS);
-        }
-    }
-    return er;   /* persistent failure surfaced unchanged */
-}
-
 static int16_t le16(UB lo, UB hi)
 {
     return (int16_t)(uint16_t)(((uint16_t)hi << 8) | (uint16_t)lo);
@@ -93,7 +60,7 @@ static int16_t le16(UB lo, UB hi)
 EXPORT ER imu_drv_read_accel(int16_t raw[3])
 {
     UB b[VECTOR_BYTES];
-    ER er = xfer_read_retry(g_addr, (UB)(LSM303D_OUT_X_L_A | LSM303D_AUTO_INC), b, VECTOR_BYTES);
+    ER er = xfer_read(g_addr, (UB)(LSM303D_OUT_X_L_A | LSM303D_AUTO_INC), b, VECTOR_BYTES);
     if (er != E_OK) { return er; }
     raw[0] = le16(b[0], b[1]);
     raw[1] = le16(b[2], b[3]);
@@ -117,7 +84,7 @@ EXPORT ER imu_drv_read_mag(int16_t raw[3], UB *overflow)
     }
 #endif
     /* Original six-byte magnetic burst, no debug bus traffic by default. */
-    er = xfer_read_retry(g_addr,
+    er = xfer_read(g_addr,
                    (UB)(LSM303D_OUT_X_L_M | LSM303D_AUTO_INC),
                    b, VECTOR_BYTES);
     if (er != E_OK) return er;
