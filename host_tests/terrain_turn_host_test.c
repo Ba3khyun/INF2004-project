@@ -17,9 +17,9 @@ int main(void)
  T(b4_terrain_request(1,1,1)==B4_TERRAIN_SLOW_REQUEST);
  T(b4_terrain_request(1,0,1)==B4_TERRAIN_HALT);
  imu_hump_reset(&hump);
- for(i=0;i<15;i++){imu_hump_event_t e=imu_hump_update(&hump,10.0f,3.0f,&peak); if(e==IMU_HUMP_STARTED)started++;}
- for(i=0;i<15;i++)(void)imu_hump_update(&hump,-10.0f,3.0f,&peak);
- for(i=0;i<4;i++){imu_hump_event_t e=imu_hump_update(&hump,0.0f,0.0f,&peak); if(e==IMU_HUMP_DONE_VALID)valid_done++;}
+ for(i=0;i<15;i++){imu_hump_event_t e=imu_hump_update(&hump,10.0f,0.0f,3.0f,&peak); if(e==IMU_HUMP_STARTED)started++;}
+ for(i=0;i<15;i++)(void)imu_hump_update(&hump,-10.0f,0.0f,3.0f,&peak);
+ for(i=0;i<4;i++){imu_hump_event_t e=imu_hump_update(&hump,0.0f,0.0f,0.0f,&peak); if(e==IMU_HUMP_DONE_VALID)valid_done++;}
  T(started==1);T(valid_done==1);T(peak >= 2.0f);
  printf("[HOST] HUMP-UP-DOWN + TURN FUSION: %s (%d failures, peak~%.2fmm)\n",failures?"FAIL":"PASS",failures,peak);
  return failures!=0;

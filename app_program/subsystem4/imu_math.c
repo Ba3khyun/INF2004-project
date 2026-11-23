@@ -296,19 +296,22 @@ void imu_hump_reset(imu_hump_t *h)
     h->peak_mm = 0.0f;
 }
 
-imu_hump_event_t imu_hump_update(imu_hump_t *h, float pitch_deg, float delta_mm,
-                                 float *peak_mm)
+imu_hump_event_t imu_hump_update(imu_hump_t *h, float pitch_deg, float roll_deg,
+                                 float delta_mm, float *peak_mm)
 {
     float rise = imu_sinf(pitch_deg * DEG_TO_RAD) * delta_mm;
 
     if (h->phase == IMU_HUMP_IDLE) {
-        if (pitch_deg > IMU_HUMP_ENTRY_DEG) {
+        if (pitch_deg > IMU_HUMP_ENTRY_DEG ||
+            imu_fabsf(roll_deg) > IMU_HUMP_ENTRY_DEG) {
             h->above_cnt++;
-            h->pre_mm += rise;
+            if (pitch_deg > 0.0f) {
+                h->pre_mm += rise;
+            }
             if (h->above_cnt >= IMU_HUMP_ENTRY_SAMPLES) {
                 h->phase = IMU_HUMP_TRACKING;
                 h->height_mm = h->pre_mm;
-                h->peak_mm = h->pre_mm;
+                h->peak_mm = (h->pre_mm > 0.0f) ? h->pre_mm : 0.0f;
                 h->flat_cnt = 0U;
                 h->samples = 0U;
                 return IMU_HUMP_STARTED;
@@ -326,7 +329,8 @@ imu_hump_event_t imu_hump_update(imu_hump_t *h, float pitch_deg, float delta_mm,
         h->peak_mm = h->height_mm;
     }
     h->samples++;
-    if (imu_fabsf(pitch_deg) < IMU_HUMP_EXIT_DEG) {
+    if (imu_fabsf(pitch_deg) < IMU_HUMP_EXIT_DEG &&
+        imu_fabsf(roll_deg) < IMU_HUMP_EXIT_DEG) {
         h->flat_cnt++;
     } else {
         h->flat_cnt = 0U;

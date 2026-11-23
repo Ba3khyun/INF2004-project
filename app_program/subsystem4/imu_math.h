@@ -24,8 +24,8 @@
 /* ---- thresholds: PROVISIONAL, to be tuned with logged data (A4.x) ---- */
 #define IMU_SHOCK_MINOR_G         1.5f   /* A4.7: normal driving must stay below this   */
 #define IMU_SHOCK_CRITICAL_G      2.5f   /* retained for classification; NOT a demo-end trigger */
-#define IMU_HUMP_ENTRY_DEG        5.0f   /* pitch above this starts a hump              */
-#define IMU_HUMP_EXIT_DEG         2.0f   /* |pitch| below this counts as flat           */
+#define IMU_HUMP_ENTRY_DEG        1.5f   /* pitch or absolute roll above this starts    */
+#define IMU_HUMP_EXIT_DEG         0.75f  /* both |pitch| and |roll| below this count flat */
 #define IMU_HUMP_ENTRY_SAMPLES    3U
 #define IMU_HUMP_EXIT_SAMPLES     3U
 #define IMU_HUMP_TIMEOUT_SAMPLES  2000U   /* 20 s at 100 Hz                               */
@@ -146,7 +146,7 @@ imu_pickup_reason_t imu_pickup_lift_motion_step(imu_pickup_detector_t *d,
                                                float roll_deg);
 
 
-/* ---- hump height = running sum of sin(pitch) * distance ---- */
+/* ---- hump detection uses pitch/roll; height uses pitch and distance ---- */
 typedef enum { IMU_HUMP_IDLE = 0, IMU_HUMP_TRACKING } imu_hump_phase_t;
 typedef enum {
     IMU_HUMP_NONE = 0,
@@ -166,9 +166,10 @@ typedef struct {
 } imu_hump_t;
 
 void imu_hump_reset(imu_hump_t *h);
-/* pitch_deg: level-corrected pitch.  delta_mm: distance moved since the last
- * call (from the encoders).  *peak_mm is set when DONE_* is returned. */
-imu_hump_event_t imu_hump_update(imu_hump_t *h, float pitch_deg, float delta_mm,
-                                 float *peak_mm);
+/* Angles are level-corrected. Roll can trigger/hold a hump, but only pitch
+ * contributes to its reported height. delta_mm is encoder travel since the
+ * last call; *peak_mm is set when DONE_* is returned. */
+imu_hump_event_t imu_hump_update(imu_hump_t *h, float pitch_deg, float roll_deg,
+                                 float delta_mm, float *peak_mm);
 
 #endif /* IMU_MATH_H */
