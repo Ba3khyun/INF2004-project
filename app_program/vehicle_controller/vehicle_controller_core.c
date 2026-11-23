@@ -32,7 +32,14 @@ void vc_core_imu(vc_core_t *vc, vc_imu_event_t event, uint8_t valid, uint8_t hei
         vc->hump_active = 0;
         break;
     case VC_IMU_HUMP_START:
-        if (vc->imu_ready && !vc->imu_fault) vc->hump_active = 1;
+        if (vc->imu_ready && !vc->imu_fault) {
+            vc->hump_active = 1;
+            if (vc->intent == VC_INTENT_FORWARD ||
+                vc->intent == VC_INTENT_STEER_LEFT ||
+                vc->intent == VC_INTENT_STEER_RIGHT) {
+                vc->gap_armed = 1;
+            }
+        }
         break;
     case VC_IMU_HUMP_DONE:
         vc->gap_armed = 0;

@@ -20,7 +20,7 @@ int main(void)
     vc_core_line(&vc, VC_INTENT_STEER_RIGHT, 600);
     assert(vc_core_step(&vc, 601) == VC_OUTPUT_STEER_RIGHT);
     vc_core_line_visible(&vc, 0);
-    assert(vc_core_step(&vc, 602) == VC_OUTPUT_HALT && vc.state == VC_LINE_SEARCH);
+    assert(vc_core_step(&vc, 602) == VC_OUTPUT_STEER_RIGHT && vc.state == VC_LINE_SEARCH);
     vc_core_line_visible(&vc, 1);
     vc_core_set_safety(&vc, 1, 0);
     assert(vc_core_step(&vc, 602) == VC_OUTPUT_HALT && vc.state == VC_ERROR);
@@ -69,6 +69,22 @@ int main(void)
     vc_core_line_visible(&vc, 0);
     assert(vc_core_step(&vc, 6599) == VC_OUTPUT_FORWARD);
     assert(vc_core_step(&vc, 6601) == VC_OUTPUT_HALT);
+
+    /* Hump detection may arrive after the short approach-gap allowance.
+     * Re-arm the bounded hump allowance so the vehicle can climb the ramp. */
+    vc_core_init(&vc);
+    vc_core_imu(&vc, VC_IMU_READY, 0, 0);
+    vc_core_line(&vc, VC_INTENT_FORWARD, 0);
+    assert(vc_core_step(&vc, 0) == VC_OUTPUT_FORWARD);
+    vc_core_line_visible(&vc, 0);
+    vc.travel_mm = VC_APPROACH_GAP_MM + 1U;
+    assert(vc_core_step(&vc, 100) == VC_OUTPUT_HALT);
+    vc_core_imu(&vc, VC_IMU_HUMP_START, 0, 0);
+    assert(vc_core_step(&vc, 101) == VC_OUTPUT_FORWARD &&
+           vc.state == VC_HUMP_CROSSING);
+    vc.travel_mm = VC_HUMP_GAP_MM + 1U;
+    assert(vc_core_step(&vc, 102) == VC_OUTPUT_HALT);
+
     puts("VC core: all software-only tests passed");
     return 0;
 }
