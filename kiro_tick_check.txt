@@ -1,0 +1,9 @@
+﻿config/config.h:41:#define CNF_TIMER_PERIOD	10	/* System timer period */
+include/sys/knldef.h:28:#if ( CNF_TIMER_PERIOD < MIN_TIMER_PERIOD || CNF_TIMER_PERIOD > MAX_TIMER_PERIOD )
+include/sys/knldef.h:29:# error "CNF_TIMER_PERIOD is out of range."
+include/sys/knldef.h:67:#define	TIMER_PERIOD	CNF_TIMER_PERIOD
+117d309 2026-11-22 cgxh: Integration of all parts
+0fb1be2 2026-11-20 2502446: Smooth line steering and keep barcode reads from interrupting it
+d150881 2026-11-20 Ba3khyun: big patch fix
+04246b8 2026-11-09 2502446: Integrate B2/B3/B4 interfaces, terrain analysis and safety validation
+9e96f71 2026-11-09 2502446: Implement Vehicle Controller, Safety Handler and subsystem4 (IMU) integration
