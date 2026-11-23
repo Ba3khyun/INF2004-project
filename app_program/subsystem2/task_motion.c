@@ -47,15 +47,9 @@
 #define TURN_PWM 20.0f
 #define STEER_RIGHT_INNER_PWM 16.0f
 
-/* SAFETY GATE: speed requests are computed, stored and validated, but DO NOT
- * alter motor PWM while live ESTOP and command arbitration are unverified.
- * Do not enable this gate just to get tests passing. */
-#include "../vehicle_controller/hump_drive_config.h"
-/* OFF: the 45 % hump cap would give 9 % / 5.4 % / 6.75 % PWM, below what is
- * known to move the car, so a hump would stall into an Encoder timeout.
- * Every cap-0 request coincides with a VC HALT, so no stop is lost.
- * Enable only after measuring the minimum PWM that moves the car. */
-#define B2_ENABLE_LIVE_SPEED_CAP_PWM 0
+/* Bounded PWM scaling is applied only by motion_task, after its safety checks.
+ * Hump scale 125% changes 20% drive to 25% (16% inner wheel to 20%). */
+#define B2_ENABLE_LIVE_PWM_SCALE 1
 
 
 /* Speed telemetry (TQ_FIELD_SPEED, cm/s).  WHEEL_DIAMETER_CM is a
@@ -117,18 +111,18 @@ LOCAL volatile UW g_wheel_sample_ms = 0u;
 LOCAL volatile UW g_wheel_direction_inferred = 0u;
 LOCAL float g_wheel_left_total_mm = 0.0f;
 LOCAL float g_wheel_right_total_mm = 0.0f;
-/* Speed cap setter never calls motor routines: only motor task may apply it. */
-LOCAL volatile UW g_requested_speed_cap_pct = MC_SPEED_CAP_NORMAL;
+/* Speed scale setter never calls motor routines: only motion_task applies it. */
+LOCAL volatile UW g_requested_speed_scale_pct = MC_SPEED_SCALE_NORMAL;
 
-EXPORT ER motion_speed_cap_request(UW percent)
+EXPORT ER motion_speed_scale_request(UW percent)
 {
-    if (percent > 100u) return E_PAR;
-    __atomic_store_n(&g_requested_speed_cap_pct, percent, __ATOMIC_RELEASE);
+    if (percent > MC_SPEED_SCALE_MAX) return E_PAR;
+    __atomic_store_n(&g_requested_speed_scale_pct, percent, __ATOMIC_RELEASE);
     return E_OK;
 }
-EXPORT UW motion_speed_cap_requested(void)
+EXPORT UW motion_speed_scale_requested(void)
 {
-    return __atomic_load_n(&g_requested_speed_cap_pct, __ATOMIC_ACQUIRE);
+    return __atomic_load_n(&g_requested_speed_scale_pct, __ATOMIC_ACQUIRE);
 }
 EXPORT ER motion_get_wheel_feedback(motion_wheel_feedback_t *out)
 {
@@ -335,22 +329,21 @@ LOCAL void check_safety(void)
  * Start movement
  * ======================== */
 
-/* Only the motion-owning task may translate cap requests into physical PWM.
- * With B2_ENABLE_LIVE_SPEED_CAP_PWM=0 this returns Buddy 2's original PWM. */
-LOCAL float capped_pwm(float base)
+/* Only the motion-owning task translates scale requests into physical PWM. */
+LOCAL float scaled_pwm(float base)
 {
-#if B2_ENABLE_LIVE_SPEED_CAP_PWM
-    return b2_cap_pwm(base, motion_speed_cap_requested());
+#if B2_ENABLE_LIVE_PWM_SCALE
+    return b2_scale_pwm(base, motion_speed_scale_requested());
 #else
     return base;
 #endif
 }
-#if B2_ENABLE_LIVE_SPEED_CAP_PWM
-LOCAL void apply_active_speed_limit(void)
+#if B2_ENABLE_LIVE_PWM_SCALE
+LOCAL void apply_active_pwm_scale(void)
 {
-    float drive = capped_pwm(MOVE_PWM);
-    float steer = capped_pwm(STEER_RIGHT_INNER_PWM);
-    float pivot = capped_pwm(TURN_PWM);
+    float drive = scaled_pwm(MOVE_PWM);
+    float steer = scaled_pwm(STEER_RIGHT_INNER_PWM);
+    float pivot = scaled_pwm(TURN_PWM);
     if (!continuous_motion || !is_moving() || safety_estop_latched()) return;
     switch (motion_state) {
     case MOTION_FORWARD: motor1_forward(drive); motor2_reverse(drive); break;
@@ -418,21 +411,21 @@ LOCAL void start_motion(MotionState command, BOOL continuous)
 		if (command == MOTION_ARC_RIGHT)
 		{
 			MOTION_TRACE((UB *)"\nmotion: starting gentle right arc...\n");
-			motor1_forward(capped_pwm(MOVE_PWM));
-			motor2_reverse(capped_pwm(STEER_RIGHT_INNER_PWM));
+			motor1_forward(scaled_pwm(MOVE_PWM));
+			motor2_reverse(scaled_pwm(STEER_RIGHT_INNER_PWM));
 		}
 		else if (command == MOTION_ARC_LEFT)
 		{
 			MOTION_TRACE((UB *)"\nmotion: starting gentle left arc...\n");
-			motor1_forward(capped_pwm(STEER_RIGHT_INNER_PWM));
-			motor2_reverse(capped_pwm(MOVE_PWM));
+			motor1_forward(scaled_pwm(STEER_RIGHT_INNER_PWM));
+			motor2_reverse(scaled_pwm(MOVE_PWM));
 		}
 		else
 		{
 			MOTION_TRACE((UB *)"\nmotion: starting %sFORWARD movement...\n",
 					  continuous ? "continuous " : "");
-			motor1_forward(capped_pwm(MOVE_PWM));
-			motor2_reverse(capped_pwm(MOVE_PWM));
+			motor1_forward(scaled_pwm(MOVE_PWM));
+			motor2_reverse(scaled_pwm(MOVE_PWM));
 		}
 	}
 	else if (command == MOTION_LEFT)
@@ -440,14 +433,14 @@ LOCAL void start_motion(MotionState command, BOOL continuous)
 		target_revolutions = continuous ? 0.0f : TURN_REVOLUTIONS;
 		MOTION_TRACE((UB *)"\nmotion: starting %sLEFT turn...\n",
 				  continuous ? "continuous " : "");
-		motors_left(capped_pwm(TURN_PWM));
+		motors_left(scaled_pwm(TURN_PWM));
 	}
 	else if (command == MOTION_RIGHT)
 	{
 		target_revolutions = continuous ? 0.0f : TURN_REVOLUTIONS;
 		MOTION_TRACE((UB *)"\nmotion: starting %sRIGHT turn...\n",
 				  continuous ? "continuous " : "");
-		motors_right(capped_pwm(TURN_PWM));
+		motors_right(scaled_pwm(TURN_PWM));
 	}
 }
 
@@ -701,7 +694,7 @@ EXPORT void motion_task(INT stacd, void *exinf)
 	g_motion_distance_total = 0.0f;
     g_wheel_left_total_mm = 0.0f;
     g_wheel_right_total_mm = 0.0f;
-    __atomic_store_n(&g_requested_speed_cap_pct, MC_SPEED_CAP_NORMAL, __ATOMIC_RELEASE);
+    __atomic_store_n(&g_requested_speed_scale_pct, MC_SPEED_SCALE_NORMAL, __ATOMIC_RELEASE);
     publish_wheel_feedback(now_ms(), 0u);
 
 
@@ -748,10 +741,10 @@ EXPORT void motion_task(INT stacd, void *exinf)
 
 		now = now_ms();
 		check_safety();
-#if B2_ENABLE_LIVE_SPEED_CAP_PWM
+#if B2_ENABLE_LIVE_PWM_SCALE
         /* Reapply latest bounded request at the existing 10ms motion tick.
          * Only for continuous moves; never reenergize completed discrete wheels. */
-        apply_active_speed_limit();
+        apply_active_pwm_scale();
 #endif
 		update_motion(now);
 		post_speed(now);

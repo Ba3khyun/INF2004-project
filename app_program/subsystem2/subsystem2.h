@@ -11,6 +11,7 @@
 #define SUBSYSTEM2_H
 
 #include "../app.h"
+#include "motion_feedback_math.h"
 
 /* ---------------------------------------------------------------------
  *  Motion Control (Buddy 2)
@@ -83,14 +84,16 @@ typedef struct {
 } motion_wheel_feedback_t;
 IMPORT ER motion_get_wheel_feedback(motion_wheel_feedback_t *out);
 
-/* Percent of Buddy 2's normal PWM settings, 0..100. Writes only a 32-bit
- * request; by default DOES NOT apply it to PWM (see task_motion.c gate).
- * Normal 100%, hump proposed 45%, invalid/unsafe proposed 0%.
+/* Percent scale applied to Buddy 2's normal PWM settings, 0..150.
+ * 100% is normal; 125% boosts the hump duty by 25%. Actual PWM is clamped
+ * to 100%. Zero means halt. Only the motion task applies this request.
  * Only the Vehicle Controller should request this in live operation. */
-#define MC_SPEED_CAP_NORMAL 100u
-#define MC_SPEED_CAP_HUMP   45u
-IMPORT ER motion_speed_cap_request(UW percent);
-IMPORT UW motion_speed_cap_requested(void);
+#define MC_SPEED_SCALE_STOP    0u
+#define MC_SPEED_SCALE_NORMAL  100u
+#define MC_SPEED_SCALE_HUMP    125u
+#define MC_SPEED_SCALE_MAX     B2_MAX_PWM_SCALE_PERCENT
+IMPORT ER motion_speed_scale_request(UW percent);
+IMPORT UW motion_speed_scale_requested(void);
 
 /* Private to subsystem 2 */
 IMPORT void	motion_task(INT stacd, void *exinf);

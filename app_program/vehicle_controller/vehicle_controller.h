@@ -24,7 +24,7 @@ UW vehicle_controller_motion_blockers(void); /* VMA_BLOCK_* */
 UW vehicle_controller_line_update_count(void); /* VC task consumed updates */
 UW vehicle_controller_line_published_count(void); /* Buddy 3 posts, 23-bit modulo */
 UW vehicle_controller_line_age_ms(void);
-UW vehicle_controller_speed_cap_requested(void); /* cap sent, no PWM application */
+UW vehicle_controller_speed_scale_requested(void); /* scale sent to Buddy 2 */
 UW vehicle_controller_wheel_feedback_seq(void);
 /* Observability for cross-buddy software integration; never actuation. */
 UW vehicle_controller_obstacle_hold(void);

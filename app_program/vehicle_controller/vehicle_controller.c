@@ -1,7 +1,7 @@
 #include "vehicle_controller.h"
 #include "../app_debug.h"
 #include "../subsystem4/subsystem4.h"
-#include "../subsystem2/subsystem2.h"  /* motor commands, wheel feedback and speed cap */
+#include "../subsystem2/subsystem2.h"  /* motor commands, wheel feedback and PWM scale */
 #define VC_CORE_USE_TEAM_STATE 1
 #include "vehicle_controller_core.h"
 #include "vehicle_controller_motion_adapter.h"
@@ -21,8 +21,8 @@
  * before interpreting live encoder yaw. 0 disables angle conversion. */
 #define VC_WHEEL_TRACK_MM 0.0f
 #define VC_ENABLE_TRACK_DISTANCE_YAW 0
-/* Buddy 2 applies the request only in powered handoff builds. */
-#define VC_SEND_SPEED_CAP_REQUEST 1
+/* Buddy 2's motion task is the only code that applies this PWM scale. */
+#define VC_SEND_SPEED_SCALE_REQUEST 1
 
 /* Powered handoff: Buddy 2 latches its own EMERGENCY_STOP (FLT_MOTOR) on an
  * encoder or movement timeout, and only MC_CMD_CLEAR releases it.  The VC
@@ -54,7 +54,7 @@ static uint32_t vc_adapter_blockers = VMA_BLOCK_B5_MISSING |
     VMA_BLOCK_STOP_UNVERIFIED | VMA_BLOCK_HANDOFF_PENDING;
 /* VC task is the only writer. Readers use 32-bit atomic loads. */
 static uint32_t vc_line_updates = 0u;
-static uint32_t vc_speed_cap_request = MC_SPEED_CAP_NORMAL;
+static uint32_t vc_speed_scale_request = MC_SPEED_SCALE_NORMAL;
 static uint32_t vc_wheel_feedback_seq = 0u;
 static int32_t vc_wheel_left_mm = 0;
 static int32_t vc_wheel_right_mm = 0;
@@ -109,8 +109,8 @@ UW vehicle_controller_line_published_count(void)
 UW vehicle_controller_line_age_ms(void)
 { return __atomic_load_n(&vc_line_age_ms, __ATOMIC_ACQUIRE); }
 
-UW vehicle_controller_speed_cap_requested(void)
-{ return __atomic_load_n(&vc_speed_cap_request, __ATOMIC_ACQUIRE); }
+UW vehicle_controller_speed_scale_requested(void)
+{ return __atomic_load_n(&vc_speed_scale_request, __ATOMIC_ACQUIRE); }
 UW vehicle_controller_wheel_feedback_seq(void)
 { return __atomic_load_n(&vc_wheel_feedback_seq, __ATOMIC_ACQUIRE); }
 UW vehicle_controller_obstacle_hold(void) { return g_bridge.obstacle_hold; }
@@ -165,7 +165,7 @@ ER vehicle_controller_init(void)
         VMA_BLOCK_HANDOFF_PENDING, __ATOMIC_RELEASE);
     __atomic_store_n(&vc_line_updates, 0u, __ATOMIC_RELEASE);
     __atomic_store_n(&vc_line_age_ms, UINT32_MAX, __ATOMIC_RELEASE);
-    __atomic_store_n(&vc_speed_cap_request, MC_SPEED_CAP_NORMAL, __ATOMIC_RELEASE);
+    __atomic_store_n(&vc_speed_scale_request, MC_SPEED_SCALE_NORMAL, __ATOMIC_RELEASE);
     __atomic_store_n(&vc_wheel_feedback_seq, 0u, __ATOMIC_RELEASE);
     return E_OK;
 }
@@ -442,22 +442,21 @@ static void vehicle_controller_task(INT stacd, void *exinf)
 #endif
             }
         }
-        /* 45% hump request; 0 on invalid IMU/safety read; 100 otherwise.
-         * Never controls motor PWM with Buddy 2's default compile gate. */
+        /* 125% PWM scale on a detected hump; 0 on invalid safety/IMU state. */
         {
-            UW cap = MC_SPEED_CAP_NORMAL;
+            UW scale = MC_SPEED_SCALE_NORMAL;
             if (!monitor_ready || !safe_to_read || !time_ok ||
                 b4_input_bridge_halt(&g_bridge) ||
                 (safety.flgptn & (SAFETY_REQ_COLLISION |
                   SAFETY_REQ_OBSTACLE_STOP | SAFETY_REQ_REMOTE_ABORT |
-                  SAFETY_ESTOP_LATCHED)) != 0u) cap = 0u;
-            else if (vc.hump_active || (vc.state == VC_LINE_SEARCH && output == VC_OUTPUT_FORWARD)) cap = MC_SPEED_CAP_HUMP;
+                  SAFETY_ESTOP_LATCHED)) != 0U) scale = MC_SPEED_SCALE_STOP;
+            else if (vc.hump_active) scale = MC_SPEED_SCALE_HUMP;
 #if VC_POWERED_HANDOFF
-            if (output == VC_OUTPUT_HALT) cap = 0u;
+            if (output == VC_OUTPUT_HALT) scale = MC_SPEED_SCALE_STOP;
 #endif
-            __atomic_store_n(&vc_speed_cap_request, cap, __ATOMIC_RELEASE);
-#if VC_SEND_SPEED_CAP_REQUEST
-            (void)motion_speed_cap_request(cap); /* request only, no PWM writes */
+            __atomic_store_n(&vc_speed_scale_request, scale, __ATOMIC_RELEASE);
+#if VC_SEND_SPEED_SCALE_REQUEST
+            (void)motion_speed_scale_request(scale);
 #endif
         }
         vc_live_state = (UW)vc.state;
@@ -525,11 +524,11 @@ static void vehicle_controller_task(INT stacd, void *exinf)
             (time_ok && (UW)(now - last_log_ms) >= 5000U)) {
             tm_printf((UB*)"[VC] state=%u line=%u intent=%u output=%u powered=%u\n",
                       vc_live_state, (UW)vc.line_visible, (UW)vc.intent, vc_live_output, (UINT)VC_POWERED_HANDOFF);
-            tm_printf((UB*)"[VC-B2] wheel_seq=%u L=%d R=%d age=%ums cap_req=%u%%\n",
+            tm_printf((UB*)"[VC-B2] wheel_seq=%u L=%d R=%d age=%ums scale_req=%u%%\n",
                       (UINT)__atomic_load_n(&vc_wheel_feedback_seq, __ATOMIC_ACQUIRE),
                       (INT)vc_wheel_left_mm, (INT)vc_wheel_right_mm,
                       (UINT)vc_wheel_feedback_age,
-                      (UINT)__atomic_load_n(&vc_speed_cap_request, __ATOMIC_ACQUIRE));
+                      (UINT)__atomic_load_n(&vc_speed_scale_request, __ATOMIC_ACQUIRE));
             previous_state = vc_live_state;
             last_log_ms = now;
         }

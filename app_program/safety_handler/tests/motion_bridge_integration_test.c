@@ -12,14 +12,16 @@ int motion_bridge_integration_test_run(void)
     motion_wheel_feedback_t before = {0}, after = {0};
     ER e0 = motion_get_wheel_feedback(&before);
     ER e1;
-    UW last = motion_speed_cap_requested();
-    /* Do not change cap in this test; VC is its active writer. */
-    B4_CHECK_B2(last <= 100u);
-    B4_CHECK_B2(motion_speed_cap_request(101u) == E_PAR);
+    UW last = motion_speed_scale_requested();
+    /* Do not change the PWM scale in this test; VC is its active writer. */
+    B4_CHECK_B2(last <= MC_SPEED_SCALE_MAX);
+    B4_CHECK_B2(motion_speed_scale_request(MC_SPEED_SCALE_MAX + 1u) == E_PAR);
     B4_CHECK_B2(motion_get_wheel_feedback(0) == E_PAR);
-    B4_CHECK_B2(absf_b2(b2_cap_pwm(20.0f, 45u) - 9.0f) < 0.01f);
-    B4_CHECK_B2(absf_b2(b2_cap_pwm(15.0f, 40u) - 6.0f) < 0.01f);
-    B4_CHECK_B2(b2_cap_pwm(20.0f, 101u) == 0.0f);
+    B4_CHECK_B2(absf_b2(b2_scale_pwm(20.0f, 100u) - 20.0f) < 0.01f);
+    B4_CHECK_B2(absf_b2(b2_scale_pwm(20.0f, MC_SPEED_SCALE_HUMP) - 25.0f) < 0.01f);
+    B4_CHECK_B2(absf_b2(b2_scale_pwm(16.0f, MC_SPEED_SCALE_HUMP) - 20.0f) < 0.01f);
+    B4_CHECK_B2(absf_b2(b2_scale_pwm(80.0f, MC_SPEED_SCALE_MAX) - 100.0f) < 0.01f);
+    B4_CHECK_B2(b2_scale_pwm(20.0f, MC_SPEED_SCALE_MAX + 1u) == 0.0f);
     B4_CHECK_B2(absf_b2(b2_estimated_turn_deg(-94.2478f, 94.2478f, 120.0f) - 90.0f) < 1.0f);
     B4_CHECK_B2(absf_b2(b2_estimated_turn_deg(94.2478f, -94.2478f, 120.0f) + 90.0f) < 1.0f);
     B4_CHECK_B2(b2_estimated_turn_deg(-10.f, 10.f, 0.0f) == 0.0f);
@@ -31,8 +33,8 @@ int motion_bridge_integration_test_run(void)
               (UINT)before.sequence, (UINT)after.sequence,
               (UINT)(after.sequence-before.sequence),
               (INT)after.left_signed_mm, (INT)after.right_signed_mm);
-    tm_printf((UB*)"[B4-B2] speed cap request=%u%% VC=%u%%; PWM APPLY OFF; no motor posts\n",
-              (UINT)motion_speed_cap_requested(),
-              (UINT)vehicle_controller_speed_cap_requested());
+    tm_printf((UB*)"[B4-B2] PWM scale request=%u%% VC=%u%%; no motor posts\n",
+              (UINT)motion_speed_scale_requested(),
+              (UINT)vehicle_controller_speed_scale_requested());
     return failures;
 }

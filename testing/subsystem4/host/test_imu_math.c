@@ -254,6 +254,7 @@ int main(void)
             if (ev == IMU_HUMP_DONE_VALID) { done_valid++; }
         }
         CHECK("H-24", started == 2 && done_valid == 2, "two humps in a row are both detected and measured");
+
     }
 
     /* --- packed formats (app_data.h) --- */
@@ -334,6 +335,27 @@ int main(void)
     CHECK("H-33", imu_fabsf(-2.5f) == 2.5f && imu_deg_to_bam8(720.0f) == 0 && imu_deg_to_bam8(-450.0f) == 192 &&
                   imu_deg_to_bam8(725.0f) == 4 && imu_deg_to_bam8(-360.0f) == 0,
           "fabs and BAM8 normalisation for angles beyond +-360 deg");
+    {
+        imu_hump_t h;
+        imu_hump_event_t ev;
+        float peak = 0.0f;
+        const float slope = 11.54f;
+        int i, started = 0, done_valid = 0;
+
+        /* A 125% drive boost raises a 1.5 mm sample to 1.875 mm.
+         * Resample the same 30 mm hump at that larger distance per sample. */
+        imu_hump_reset(&h);
+        for (i = 0; i < 320; i++) {
+            float pitch = 0.0f;
+            if (i >= 80 && i < 160) pitch = slope;
+            else if (i >= 200 && i < 280) pitch = -slope;
+            ev = imu_hump_update(&h, pitch, 1.875f, &peak);
+            if (ev == IMU_HUMP_STARTED) { started++; }
+            if (ev == IMU_HUMP_DONE_VALID) { done_valid++; }
+        }
+        CHECK("H-34", started == 1 && done_valid == 1 && NEAR(peak, 30.0f, 1.0f),
+              "hump height remains accurate at 125% encoder distance per sample");
+    }
 
     printf("[HOST] SUMMARY %d passed, %d failed\n", g_pass, g_fail);
     return (g_fail == 0) ? 0 : 1;
