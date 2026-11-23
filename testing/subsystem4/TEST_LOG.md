@@ -10,7 +10,7 @@ Define a test here before running it. Test IDs never change.
 
 | ID | What is tested | Requirement / interface | Method | Steps / how | Expected result |
 |---|---|---|---|---|---|
-| H-01 … H-33 | imu_math.c and the packed formats in app_data.h (unit conversion, pitch/roll/heading, BAM8/offset-binary, calibration, shock, hump height, round-trip of every field, accuracy of the built-in sqrt/sin/atan2 against libm) | NFR4.4, NFR4.5, FR4.4, Minimum-Bit requirement | host auto | `cd testing/subsystem4/host && make run` | `[HOST] SUMMARY 33 passed, 0 failed` |
+| H-01 … H-36 | imu_math.c and the packed formats in app_data.h (unit conversion, pitch/roll/heading, BAM8/offset-binary, calibration, shock, pitch-based hump height, roll-only hump detection, shallow-grade detection, round-trip of every field, accuracy of the built-in sqrt/sin/atan2 against libm) | NFR4.4, NFR4.5, FR4.4, Minimum-Bit requirement | host auto | `cd testing/subsystem4/host && make run` | `[HOST] SUMMARY 36 passed, 0 failed` |
 | S4-U01 | message buffer max line = S4_SUMMARY_MAX | IF-03 (example link) | auto | `subsystem4_test.c` | `[TEST] S4-U01 PASS` |
 | S4-U10 | chip identified as LSM303DLHC | hardware bring-up | auto | flash a `pico-w-test` build, board still | PASS |
 | S4-U12 | calibration finishes, task reaches MONITORING within 4.5 s | NFR4.5 | auto | as above | PASS |

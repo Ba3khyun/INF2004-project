@@ -336,7 +336,7 @@ static void handle_monitoring(const float f[3], float mag_g, float delta_mm)
     }
 
     (void)f;
-    he = imu_hump_update(&g.hump, g.pitch_deg, delta_mm, &peak);
+    he = imu_hump_update(&g.hump, g.pitch_deg, g.roll_deg, delta_mm, &peak);
     if (he == IMU_HUMP_STARTED) {
         g.state = S4_ST_HUMP_TRACKING;
         post_evt(S4_EVT_HUMP_START, 0U, 0U);              /* Vehicle Controller boosts drive */

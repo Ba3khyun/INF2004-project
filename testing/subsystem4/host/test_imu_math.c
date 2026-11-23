@@ -206,7 +206,7 @@ int main(void)
                 else if (i < 350)       { pitch = -slope; }
                 else                    { pitch = 0.0f; }
                 pitch += bias[b] + noise(0.3f);
-                ev = imu_hump_update(&h, pitch, 1.5f, &peak);
+                ev = imu_hump_update(&h, pitch, 0.0f, 1.5f, &peak);
                 if (ev == IMU_HUMP_STARTED) { started++; }
                 if (ev == IMU_HUMP_DONE_VALID) { done_valid++; }
                 if (ev == IMU_HUMP_DONE_INVALID) { done_invalid++; }
@@ -225,7 +225,7 @@ int main(void)
         started = 0; done_invalid = 0; done_valid = 0;
         for (i = 0; i < (int)(IMU_HUMP_ENTRY_SAMPLES + IMU_HUMP_TIMEOUT_SAMPLES + 1U); i++) {
             float pitch = (i < 100) ? slope : 0.0f;
-            ev = imu_hump_update(&h, pitch, 1.5f, &peak);
+            ev = imu_hump_update(&h, pitch, 0.0f, 1.5f, &peak);
             if (ev == IMU_HUMP_STARTED) { started++; }
             if (ev == IMU_HUMP_DONE_INVALID) { done_invalid++; }
             if (ev == IMU_HUMP_DONE_VALID) { done_valid++; }
@@ -237,7 +237,7 @@ int main(void)
         imu_hump_reset(&h);
         started = 0;
         for (i = 0; i < 2000; i++) {
-            if (imu_hump_update(&h, noise(1.0f), 1.5f, &peak) == IMU_HUMP_STARTED) { started++; }
+            if (imu_hump_update(&h, noise(1.0f), 0.0f, 1.5f, &peak) == IMU_HUMP_STARTED) { started++; }
         }
         CHECK("H-23", started == 0, "+-1 deg pitch noise for 20 s never starts a hump");
 
@@ -249,7 +249,7 @@ int main(void)
             int k = i % 600;
             if (k >= 50 && k < 150) { pitch = slope; }
             else if (k >= 200 && k < 300) { pitch = -slope; }
-            ev = imu_hump_update(&h, pitch, 1.5f, &peak);
+            ev = imu_hump_update(&h, pitch, 0.0f, 1.5f, &peak);
             if (ev == IMU_HUMP_STARTED) { started++; }
             if (ev == IMU_HUMP_DONE_VALID) { done_valid++; }
         }
@@ -349,12 +349,57 @@ int main(void)
             float pitch = 0.0f;
             if (i >= 80 && i < 160) pitch = slope;
             else if (i >= 200 && i < 280) pitch = -slope;
-            ev = imu_hump_update(&h, pitch, 1.875f, &peak);
+            ev = imu_hump_update(&h, pitch, 0.0f, 1.875f, &peak);
             if (ev == IMU_HUMP_STARTED) { started++; }
             if (ev == IMU_HUMP_DONE_VALID) { done_valid++; }
         }
         CHECK("H-34", started == 1 && done_valid == 1 && NEAR(peak, 30.0f, 1.0f),
               "hump height remains accurate at 125% encoder distance per sample");
+    }
+    {
+        imu_hump_t h;
+        imu_hump_event_t ev = IMU_HUMP_NONE;
+        float peak = 0.0f;
+        int i, sign, all_directions = 1;
+
+        for (sign = -1; sign <= 1; sign += 2) {
+            int started = 0, done_invalid = 0;
+            int ended_while_rolled = 0;
+
+            imu_hump_reset(&h);
+            peak = 0.0f;
+            for (i = 0; i < 10; i++) {
+                ev = imu_hump_update(&h, 0.0f, (float)(8 * sign), 1.875f, &peak);
+                if (ev == IMU_HUMP_STARTED) { started++; }
+                if (ev == IMU_HUMP_DONE_INVALID) { done_invalid++; }
+            }
+            ended_while_rolled = (done_invalid != 0);
+            for (i = 0; i < 10; i++) {
+                ev = imu_hump_update(&h, 0.0f, 0.0f, 1.875f, &peak);
+                if (ev == IMU_HUMP_DONE_INVALID) { done_invalid++; }
+            }
+            if (started != 1 || ended_while_rolled || done_invalid != 1 || peak != 0.0f) {
+                all_directions = 0;
+            }
+        }
+        CHECK("H-35", all_directions,
+              "positive or negative roll triggers tracking and stays active until level; height is unavailable");
+    }
+    {
+        imu_hump_t h;
+        float peak = 0.0f;
+        int i, started = 0;
+        const float shallow_grade_deg = 1.78f;
+
+        imu_hump_reset(&h);
+        for (i = 0; i < 10; i++) {
+            if (imu_hump_update(&h, shallow_grade_deg, 0.0f, 1.875f, &peak) ==
+                IMU_HUMP_STARTED) {
+                started++;
+            }
+        }
+        CHECK("H-36", started == 1,
+              "approximately 1.78 degree grade for a 6 mm rise over 193 mm triggers detection");
     }
 
     printf("[HOST] SUMMARY %d passed, %d failed\n", g_pass, g_fail);
